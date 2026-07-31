@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="theme-color" content="#030305"/>
+<title>pumkin | Write Ups</title>
+<meta name="description" content="Write ups, research, and box walkthroughs from pumkin."/>
+<link rel="icon" href="cat.png"/>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#030305;--panel-bg:rgba(255,255,255,.03);--border:rgba(255,255,255,.06);--rose:#a855f7;--rose-dim:rgba(168,85,247,.15);--emerald:#34d399;--emerald-dim:rgba(52,211,153,.1);--text:#fafafa;--muted:#9ca3af;--dim:#6b7280}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple-system,sans-serif;min-height:100vh;overflow-x:hidden;position:relative}
+body::before{content:'';position:fixed;inset:0;background:linear-gradient(rgba(255,255,255,.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px);background-size:60px 60px;z-index:0;pointer-events:none}
+.cyber-grid{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.cyber-grid::before{content:'';position:absolute;width:100%;height:100%;background:radial-gradient(circle at 50% 0%,rgba(168,85,247,.08) 0%,transparent 50%),radial-gradient(circle at 80% 80%,rgba(52,211,153,.04) 0%,transparent 50%)}
+main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}
+@media(min-width:768px){main{padding:3rem 2rem}}
+.max-w{max-width:72rem;width:100%;margin:0 auto}
+.nav-row{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:2rem}
+.back-btn{display:inline-flex;align-items:center;gap:.5rem;padding:.5rem 1rem;border-radius:.75rem;background:var(--panel-bg);border:1px solid var(--border);color:var(--muted);text-decoration:none;font-family:'JetBrains Mono','Fira Code',monospace;font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;transition:all .3s ease}
+.back-btn:hover{color:#c084fc;border-color:rgba(168,85,247,.5)}
+.back-btn svg{transition:transform .3s ease}
+.back-btn:hover svg{transform:translateX(-4px)}
+.page-title{font-size:2rem;font-weight:800;letter-spacing:-.03em;color:white;text-transform:uppercase}
+@media(min-width:768px){.page-title{font-size:3rem}}
+.page-sub{color:var(--muted);font-family:'JetBrains Mono','Fira Code',monospace;font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;margin-top:.5rem}
+.panel{background:#0a0b0f;border:1px solid var(--border);border-radius:1rem;position:relative;overflow:hidden;transition:all .3s ease}
+.panel:hover{border-color:rgba(255,255,255,.1)}
+.grid{display:grid;grid-template-columns:1fr;gap:1rem;margin-top:2rem}
+@media(min-width:768px){.grid{grid-template-columns:repeat(3,1fr)}}
+.writeup-card{display:block;height:100%;padding:1rem 1.25rem;border-radius:1rem;text-decoration:none;position:relative;overflow:hidden}
+.writeup-card .bg-pattern{position:absolute;inset:0;background:url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><rect width="20" height="20" fill="none"/><rect x="0" y="0" width="1" height="1" fill="rgba(255,255,255,.03)"/></svg>');opacity:.05;mix-blend-mode:overlay;pointer-events:none}
+.writeup-card h3{font-size:1.1rem;font-weight:800;color:white;transition:color .3s ease;position:relative;z-index:1;margin-bottom:.5rem}
+.writeup-card:hover h3{color:#c084fc}
+.blue-card:hover h3{color:#60a5fa}
+.green-card:hover h3{color:#34d399}
+.writeup-card .meta{color:var(--dim);font-size:.65rem;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.1em;text-transform:uppercase;margin-bottom:.5rem;position:relative;z-index:1}
+.writeup-card p{color:var(--muted);font-size:.8rem;line-height:1.5;position:relative;z-index:1}
+.layout{display:flex;flex-direction:column;gap:1.5rem;margin-top:2rem}
+@media(min-width:768px){.layout{flex-direction:row;align-items:flex-start}}
+.layout .grid{flex:1;min-width:0;margin-top:0}
+.cat-sidebar{width:100%;flex-shrink:0}
+@media(min-width:768px){.cat-sidebar{width:15rem;position:sticky;top:1.5rem}}
+.tpl-btn{display:inline-flex;align-items:center;gap:.45rem;padding:.45rem .9rem;border-radius:.6rem;background:var(--panel-bg);border:1px solid var(--border);color:var(--muted);text-decoration:none;font-family:'JetBrains Mono','Fira Code',monospace;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;margin-bottom:1.5rem;transition:all .3s ease}
+.tpl-btn svg{width:13px;height:13px}
+.tpl-btn:hover{color:#c084fc;border-color:rgba(168,85,247,.5)}
+.cat-group{margin-bottom:1.5rem}
+.cat-label{color:var(--dim);font-size:.65rem;font-family:'JetBrains Mono','Fira Code',monospace;text-transform:uppercase;letter-spacing:.1em;margin-bottom:.5rem}
+.cat-chips{display:flex;flex-wrap:wrap;gap:.5rem}
+.cat-chip{padding:5px 14px;border-radius:9999px;border:1px solid var(--border);background:rgba(0,0,0,.2);color:var(--muted);font-size:.75rem;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.05em;cursor:pointer;transition:all .2s ease;user-select:none}
+.cat-chip:hover{border-color:rgba(255,255,255,.2);color:var(--text)}
+.cat-chip.active{color:#fff;border-color:#a855f7;background:var(--rose-dim)}
+.writeup-card.hidden{display:none}
+.cat-chip[data-cat="diff"][data-val="easy"].active{border-color:#34d399;background:rgba(52,211,153,.12);color:#34d399}
+.cat-chip[data-cat="diff"][data-val="medium"].active{border-color:#fbbf24;background:rgba(251,191,36,.12);color:#fbbf24}
+.cat-chip[data-cat="diff"][data-val="hard"].active{border-color:#f97316;background:rgba(249,115,22,.12);color:#f97316}
+.cat-chip[data-cat="diff"][data-val="insane"].active{border-color:#ef4444;background:rgba(239,68,68,.12);color:#ef4444}
+.footer{text-align:center;padding-top:3rem;color:var(--dim);font-size:10px;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.15em;text-transform:uppercase}
+.fade-in{opacity:0;transform:translateY(20px);transition:opacity .6s ease,transform .6s ease}
+.fade-in.visible{opacity:1;transform:translateY(0)}
+.icon-sm{width:14px;height:14px;flex-shrink:0}
+</style>
+</head>
+<body>
+<div class="cyber-grid"></div>
+
+<main>
+<div class="max-w">
+  <div class="nav-row fade-in">
+    <a href="index.html" class="back-btn">
+      <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+      Home
+    </a>
+  </div>
+
+  <div class="fade-in">
+    <h1 class="page-title">Write Ups</h1>
+    <p class="page-sub">Boxes, labs, research &amp; notes.</p>
+  </div>
+
+  <div class="layout">
+    <div class="grid">
+      <a class="panel writeup-card purple fade-in" href="writeups/nimbus.html" data-diff="hard" data-os="linux">
+        <div class="bg-pattern"></div>
+        <div class="meta">hackthebox / hard / linux</div>
+        <h3>Nimbus</h3>
+        <p>SSRF &amp; IP obfuscation, AWS misconfiguration, unsafe YAML deserialization, container &amp; kernel escape.</p>
+      </a>
+
+      <a class="panel writeup-card emerald fade-in" href="writeups/reactor.html" data-diff="easy" data-os="linux">
+        <div class="bg-pattern"></div>
+        <div class="meta">hackthebox / easy / linux</div>
+        <h3>Reactor</h3>
+        <p>Application exploitation, credential cracking, local port forwarding, debug protocol RCE.</p>
+      </a>
+
+      <a class="panel writeup-card orange fade-in" href="writeups/abducted.html" data-diff="medium" data-os="linux">
+        <div class="bg-pattern"></div>
+        <div class="meta">hackthebox / medium / linux</div>
+        <h3>Abducted</h3>
+        <p>SMB &amp; print subsystem exploitation, credential decryption, share misconfiguration, polkit abuse.</p>
+      </a>
+
+      <a class="panel writeup-card blue-card fade-in" href="writeups/checkpoint.html" data-diff="medium" data-os="windows">
+        <div class="bg-pattern"></div>
+        <div class="meta">hackthebox / medium / windows</div>
+        <h3>Checkpoint</h3>
+        <p>AD DACL abuse, deleted object restoration, malicious VSIX extension, Kerberos DMSA impersonation, memory forensics.</p>
+      </a>
+
+      <a class="panel writeup-card green-card fade-in" href="writeups/enigma.html" data-diff="easy" data-os="linux">
+        <div class="bg-pattern"></div>
+        <div class="meta">hackthebox / easy / linux</div>
+        <h3>Enigma</h3>
+        <p>NFS share mining, mail credential reuse, web app RCE, database hash cracking, command injection into web actions.</p>
+      </a>
+
+      <a class="panel writeup-card purple fade-in" href="writeups/makesense.html" data-diff="medium" data-os="linux">
+        <div class="bg-pattern"></div>
+        <div class="meta">hackthebox / medium / linux</div>
+        <h3>MakeSense</h3>
+        <p>Stored XSS session hijack, WP theme editor RCE, credential reuse, internal OCR service arbitrary file write.</p>
+      </a>
+    </div>
+
+    <aside class="cat-sidebar">
+      <a href="writeups/template.html" class="tpl-btn">
+        <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        Write Up Template
+      </a>
+      <div class="cat-group">
+        <div class="cat-label">Difficulty</div>
+        <div class="cat-chips">
+          <button class="cat-chip" data-cat="diff" data-val="easy">Easy</button>
+          <button class="cat-chip" data-cat="diff" data-val="medium">Medium</button>
+          <button class="cat-chip" data-cat="diff" data-val="hard">Hard</button>
+          <button class="cat-chip" data-cat="diff" data-val="insane">Insane</button>
+        </div>
+      </div>
+      <div class="cat-group">
+        <div class="cat-label">OS</div>
+        <div class="cat-chips">
+          <button class="cat-chip" data-cat="os" data-val="linux">Linux</button>
+          <button class="cat-chip" data-cat="os" data-val="windows">Windows</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <p class="footer">pumkin / write ups</p>
+</div>
+</main>
+
+<script>
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0 });
+
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+const selected = { diff: new Set(), os: new Set() };
+const chips = document.querySelectorAll('.cat-chip');
+const cards = document.querySelectorAll('.writeup-card');
+
+function applyFilter() {
+  cards.forEach(card => {
+    const matchDiff = selected.diff.size === 0 || selected.diff.has(card.dataset.diff);
+    const matchOs = selected.os.size === 0 || selected.os.has(card.dataset.os);
+    card.classList.toggle('hidden', !(matchDiff && matchOs));
+  });
+}
+
+chips.forEach(chip => {
+  chip.addEventListener('click', () => {
+    const cat = chip.dataset.cat;
+    const val = chip.dataset.val;
+    if (selected[cat].has(val)) {
+      selected[cat].delete(val);
+      chip.classList.remove('active');
+    } else {
+      selected[cat].add(val);
+      chip.classList.add('active');
+    }
+    applyFilter();
+  });
+});
+</script>
+</body>
+</html>

