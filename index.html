@@ -46,10 +46,9 @@ main{position:relative;z-index:1;min-height:100vh;width:100%;display:flex;flex-d
   object-fit:cover;
   object-position:center center;
   display:block;
-  filter:grayscale(1);
   transition:all .7s ease
 }
-.panel:hover .avatar-frame img{filter:grayscale(0)}
+.panel:hover .avatar-frame img{filter:none}
 .scan-line{position:absolute;left:0;right:0;height:2px;background:rgba(168,85,247,.8);box-shadow:0 0 15px rgba(168,85,247,.8);animation:scan 3s linear infinite;z-index:2}
 @keyframes scan{0%{top:-2px}100%{top:100%}}
 
@@ -261,7 +260,7 @@ h1{font-size:2.5rem;font-weight:800;letter-spacing:-.03em;color:white;text-trans
           </div>
           <svg class="icon-md arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>
         </div>
-        <h3>My Tools</h3>
+        <h3>My Tools/Projects</h3>
         <p>Custom scripts, configurations, and hacking arsenal.</p>
       </a>
       <a class="panel arsenal-card h-full" href="https://github.com/andreix341/dotfiles/">
