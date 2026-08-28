@@ -49,15 +49,32 @@ main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}
 .tpl-btn:hover{color:#c084fc;border-color:rgba(168,85,247,.5)}
 .cat-group{margin-bottom:1.5rem}
 .cat-label{color:var(--dim);font-size:.65rem;font-family:'JetBrains Mono','Fira Code',monospace;text-transform:uppercase;letter-spacing:.1em;margin-bottom:.5rem}
-.cat-chips{display:flex;flex-wrap:wrap;gap:.5rem}
-.cat-chip{padding:5px 14px;border-radius:9999px;border:1px solid var(--border);background:rgba(0,0,0,.2);color:var(--muted);font-size:.75rem;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.05em;cursor:pointer;transition:all .2s ease;user-select:none}
+.cat-chips{display:flex;flex-direction:column;gap:.5rem}
+.cat-chip{padding:5px 14px;border-radius:9999px;border:1px solid var(--border);background:rgba(0,0,0,.2);color:var(--muted);font-size:.75rem;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.05em;cursor:pointer;transition:all .2s ease;user-select:none;align-self:flex-start}
+.cat-chip{text-align:left}
 .cat-chip:hover{border-color:rgba(255,255,255,.2);color:var(--text)}
 .cat-chip.active{color:#fff;border-color:#a855f7;background:var(--rose-dim)}
 .writeup-card.hidden{display:none}
-.cat-chip[data-cat="diff"][data-val="easy"].active{border-color:#34d399;background:rgba(52,211,153,.12);color:#34d399}
-.cat-chip[data-cat="diff"][data-val="medium"].active{border-color:#fbbf24;background:rgba(251,191,36,.12);color:#fbbf24}
-.cat-chip[data-cat="diff"][data-val="hard"].active{border-color:#f97316;background:rgba(249,115,22,.12);color:#f97316}
-.cat-chip[data-cat="diff"][data-val="insane"].active{border-color:#ef4444;background:rgba(239,68,68,.12);color:#ef4444}
+.writeup-card .card-category{color:var(--dim)}
+.writeup-card .diff-easy.selected{color:#34d399}
+.writeup-card .diff-medium.selected{color:#fbbf24}
+.writeup-card .diff-hard.selected{color:#f97316}
+.writeup-card .diff-insane.selected{color:#ef4444}
+.writeup-card .os-linux.selected{color:#a855f7}
+.writeup-card .os-windows.selected{color:#60a5fa}
+.cat-chip[data-cat="diff"][data-val="easy"].active{border-color:#34d399;color:#34d399}
+.cat-chip[data-cat="diff"][data-val="medium"].active{border-color:#fbbf24;color:#fbbf24}
+.cat-chip[data-cat="diff"][data-val="hard"].active{border-color:#f97316;color:#f97316}
+.cat-chip[data-cat="diff"][data-val="insane"].active{border-color:#ef4444;color:#ef4444}
+.cat-chip[data-cat="os"][data-val="linux"].active{border-color:#a855f7;color:#a855f7}
+.cat-chip[data-cat="os"][data-val="windows"].active{border-color:#60a5fa;color:#60a5fa}
+.cat-chip[data-cat="diff"][data-val="easy"].active{background:rgba(52,211,153,.12)}
+.cat-chip[data-cat="diff"][data-val="medium"].active{background:rgba(251,191,36,.12)}
+.cat-chip[data-cat="diff"][data-val="hard"].active{background:rgba(249,115,22,.12)}
+.cat-chip[data-cat="diff"][data-val="insane"].active{background:rgba(239,68,68,.12)}
+.cat-chip[data-cat="os"][data-val="linux"].active{background:rgba(168,85,247,.12)}
+.cat-chip[data-cat="os"][data-val="windows"].active{background:rgba(96,165,250,.12)}
+.writeup-card .meta .card-category{font-weight:700}
 .footer{text-align:center;padding-top:3rem;color:var(--dim);font-size:10px;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.15em;text-transform:uppercase}
 .fade-in{opacity:0;transform:translateY(20px);transition:opacity .6s ease,transform .6s ease}
 .fade-in.visible{opacity:1;transform:translateY(0)}
@@ -83,9 +100,17 @@ main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}
 
   <div class="layout">
     <div class="grid">
+      <a class="panel writeup-card purple fade-in" href="writeups/fireflow.html" data-diff="medium" data-os="linux">
+        <div class="bg-pattern"></div>
+        <div class="meta">hackthebox / <span class="card-category diff-medium">medium</span> / <span class="card-category os-linux">linux</span></div>
+        <h3>Fireflow</h3>
+        <p>Langflow unauthenticated RCE, MCP JWT alg=none, Kubernetes nodes/proxy, privileged pod host access.</p>
+        <div class="date"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Completed 28-08-2026</div>
+      </a>
+
       <a class="panel writeup-card blue-card fade-in" href="writeups/danglingtree.html" data-diff="medium" data-os="windows">
         <div class="bg-pattern"></div>
-        <div class="meta">hackthebox / medium / windows</div>
+        <div class="meta">hackthebox / <span class="card-category diff-medium">medium</span> / <span class="card-category os-windows">windows</span></div>
         <h3>DanglingTree</h3>
         <p>WAC REST API RCE, SmarterMail password reset, DPAPI credential theft, ghost AD CS template ESC1.</p>
         <div class="date"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Completed 14-08-2026</div>
@@ -93,7 +118,7 @@ main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}
 
       <a class="panel writeup-card emerald fade-in" href="writeups/cohort.html" data-diff="easy" data-os="linux">
         <div class="bg-pattern"></div>
-        <div class="meta">hackthebox / easy / linux</div>
+        <div class="meta">hackthebox / <span class="card-category diff-easy">easy</span> / <span class="card-category os-linux">linux</span></div>
         <h3>Cohort</h3>
         <p>SSRF localhost bypass, internal port scan, status endpoint vhost leak, marimo RCE, Pack2Root.</p>
         <div class="date"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Completed 03-08-2026</div>
@@ -101,7 +126,7 @@ main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}
 
       <a class="panel writeup-card blue-card fade-in" href="writeups/darkzeroreturns.html" data-diff="hard" data-os="windows">
         <div class="bg-pattern"></div>
-        <div class="meta">hackthebox / hard / windows</div>
+        <div class="meta">hackthebox / <span class="card-category diff-hard">hard</span> / <span class="card-category os-windows">windows</span></div>
         <h3>DarkZeroReturns</h3>
         <p>Handlebars SSTI RCE, ligolo-ng pivot, SSPI Gitea, runner hijack, ksu root, cross-realm DCSync.</p>
         <div class="date"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Completed 01-08-2026</div>
@@ -109,7 +134,7 @@ main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}
 
       <a class="panel writeup-card green-card fade-in" href="writeups/bedside.html" data-diff="medium" data-os="linux">
         <div class="bg-pattern"></div>
-        <div class="meta">hackthebox / medium / linux</div>
+        <div class="meta">hackthebox / <span class="card-category diff-medium">medium</span> / <span class="card-category os-linux">linux</span></div>
         <h3>Bedside</h3>
         <p>pdfminer.six pickle RCE, internal Vite LFI, leaked SSH key, torch.load checkpoint deserialization.</p>
         <div class="date"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Completed 21-07-2026</div>
@@ -117,7 +142,7 @@ main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}
 
       <a class="panel writeup-card emerald fade-in" href="writeups/paperwork.html" data-diff="easy" data-os="linux">
         <div class="bg-pattern"></div>
-        <div class="meta">hackthebox / easy / linux</div>
+        <div class="meta">hackthebox / <span class="card-category diff-easy">easy</span> / <span class="card-category os-linux">linux</span></div>
         <h3>Paperwork</h3>
         <p>LPD printer shell injection, PJL path traversal, SSH key drop, SCM_RIGHTS fd leak from root daemon.</p>
         <div class="date"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Completed 16-07-2026</div>
@@ -125,7 +150,7 @@ main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}
 
       <a class="panel writeup-card emerald fade-in" href="writeups/orion.html" data-diff="easy" data-os="linux">
         <div class="bg-pattern"></div>
-        <div class="meta">hackthebox / easy / linux</div>
+        <div class="meta">hackthebox / <span class="card-category diff-easy">easy</span> / <span class="card-category os-linux">linux</span></div>
         <h3>Orion</h3>
         <p>Craft CMS preauth RCE, env leak, DB hash crack, loopback telnetd 2.7 login bypass.</p>
         <div class="date"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Completed 11-07-2026</div>
@@ -133,7 +158,7 @@ main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}
 
       <a class="panel writeup-card emerald fade-in" href="writeups/nexus.html" data-diff="easy" data-os="linux">
         <div class="bg-pattern"></div>
-        <div class="meta">hackthebox / easy / linux</div>
+        <div class="meta">hackthebox / <span class="card-category diff-easy">easy</span> / <span class="card-category os-linux">linux</span></div>
         <h3>Nexus</h3>
         <p>Leaked .env creds, Krayin CRM RCE, DB password reuse, gitea template-sync path traversal, root SSH key.</p>
         <div class="date"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Completed 09-07-2026</div>
@@ -141,7 +166,7 @@ main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}
 
       <a class="panel writeup-card purple fade-in" href="writeups/makesense.html" data-diff="medium" data-os="linux">
         <div class="bg-pattern"></div>
-        <div class="meta">hackthebox / medium / linux</div>
+        <div class="meta">hackthebox / <span class="card-category diff-medium">medium</span> / <span class="card-category os-linux">linux</span></div>
         <h3>MakeSense</h3>
         <p>Stored XSS session hijack, WP theme editor RCE, credential reuse, internal OCR service arbitrary file write.</p>
         <div class="date"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Completed 07-07-2026</div>
@@ -149,7 +174,7 @@ main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}
 
       <a class="panel writeup-card green-card fade-in" href="writeups/enigma.html" data-diff="easy" data-os="linux">
         <div class="bg-pattern"></div>
-        <div class="meta">hackthebox / easy / linux</div>
+        <div class="meta">hackthebox / <span class="card-category diff-easy">easy</span> / <span class="card-category os-linux">linux</span></div>
         <h3>Enigma</h3>
         <p>NFS share mining, mail credential reuse, web app RCE, database hash cracking, command injection into web actions.</p>
         <div class="date"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Completed 29-06-2026</div>
@@ -157,7 +182,7 @@ main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}
 
       <a class="panel writeup-card purple fade-in" href="writeups/nimbus.html" data-diff="hard" data-os="linux">
         <div class="bg-pattern"></div>
-        <div class="meta">hackthebox / hard / linux</div>
+        <div class="meta">hackthebox / <span class="card-category diff-hard">hard</span> / <span class="card-category os-linux">linux</span></div>
         <h3>Nimbus</h3>
         <p>SSRF &amp; IP obfuscation, AWS misconfiguration, unsafe YAML deserialization, container &amp; kernel escape.</p>
         <div class="date"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Completed 27-06-2026</div>
@@ -165,7 +190,7 @@ main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}
 
       <a class="panel writeup-card blue-card fade-in" href="writeups/checkpoint.html" data-diff="medium" data-os="windows">
         <div class="bg-pattern"></div>
-        <div class="meta">hackthebox / medium / windows</div>
+        <div class="meta">hackthebox / <span class="card-category diff-medium">medium</span> / <span class="card-category os-windows">windows</span></div>
         <h3>Checkpoint</h3>
         <p>AD DACL abuse, deleted object restoration, malicious VSIX extension, Kerberos DMSA impersonation, memory forensics.</p>
         <div class="date"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Completed 17-06-2026</div>
@@ -173,7 +198,7 @@ main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}
 
       <a class="panel writeup-card orange fade-in" href="writeups/abducted.html" data-diff="medium" data-os="linux">
         <div class="bg-pattern"></div>
-        <div class="meta">hackthebox / medium / linux</div>
+        <div class="meta">hackthebox / <span class="card-category diff-medium">medium</span> / <span class="card-category os-linux">linux</span></div>
         <h3>Abducted</h3>
         <p>SMB &amp; print subsystem exploitation, credential decryption, share misconfiguration, polkit abuse.</p>
         <div class="date"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Completed 13-06-2026</div>
@@ -181,7 +206,7 @@ main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}
 
       <a class="panel writeup-card emerald fade-in" href="writeups/reactor.html" data-diff="easy" data-os="linux">
         <div class="bg-pattern"></div>
-        <div class="meta">hackthebox / easy / linux</div>
+        <div class="meta">hackthebox / <span class="card-category diff-easy">easy</span> / <span class="card-category os-linux">linux</span></div>
         <h3>Reactor</h3>
         <p>Application exploitation, credential cracking, local port forwarding, debug protocol RCE.</p>
         <div class="date"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Completed 25-05-2026</div>
@@ -236,6 +261,8 @@ function applyFilter() {
     const matchDiff = selected.diff.size === 0 || selected.diff.has(card.dataset.diff);
     const matchOs = selected.os.size === 0 || selected.os.has(card.dataset.os);
     card.classList.toggle('hidden', !(matchDiff && matchOs));
+    card.querySelector('.diff-' + card.dataset.diff).classList.toggle('selected', selected.diff.has(card.dataset.diff));
+    card.querySelector('.os-' + card.dataset.os).classList.toggle('selected', selected.os.has(card.dataset.os));
   });
 }
 

