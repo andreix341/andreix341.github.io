@@ -17,8 +17,10 @@ body::before{content:'';position:fixed;inset:0;background:linear-gradient(rgba(2
 main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}
 @media(min-width:768px){main{padding:3rem 2rem}}
 .max-w{max-width:72rem;width:100%;margin:0 auto}
-.nav-row{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:2rem}
+.nav-row{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:2rem}.nav-links{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}
 .back-btn{display:inline-flex;align-items:center;gap:.5rem;padding:.5rem 1rem;border-radius:.75rem;background:var(--panel-bg);border:1px solid var(--border);color:var(--muted);text-decoration:none;font-family:'JetBrains Mono','Fira Code',monospace;font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;transition:all .3s ease}
+.back-btn.active{color:#fff;border-color:#a855f7;background:var(--rose-dim)}
+.section-switch{display:flex;align-items:center;gap:.5rem;margin-top:1rem}
 .back-btn:hover{color:#c084fc;border-color:rgba(168,85,247,.5)}
 .back-btn svg{transition:transform .3s ease}
 .back-btn:hover svg{transform:translateX(-4px)}
@@ -96,6 +98,7 @@ main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}
   <div class="fade-in">
     <h1 class="page-title">Write Ups</h1>
     <p class="page-sub">Boxes, labs, research &amp; notes.</p>
+    <div class="section-switch" aria-label="Writeup section"><a href="writeups.html" class="back-btn active">Machines</a><a href="challenges.html" class="back-btn">Challenges</a></div>
   </div>
 
   <div class="layout">

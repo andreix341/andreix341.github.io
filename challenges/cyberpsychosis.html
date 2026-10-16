@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="theme-color" content="#030305"/>
+<title>Cyberpsychosis - Challenge Write Up | pumkin</title>
+<meta name="description" content="Cyberpsychosis reversing challenge write up: analyzing and removing a Diamorphine-style Linux rootkit."/>
+<link rel="icon" href="../cat.png"/>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#030305;--border:rgba(255,255,255,.06);--text:#fafafa;--muted:#9ca3af;--dim:#6b7280;--purple:#c084fc;--emerald:#34d399}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple-system,sans-serif;min-height:100vh;overflow-x:hidden;position:relative}body::before{content:'';position:fixed;inset:0;background:linear-gradient(rgba(255,255,255,.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px);background-size:60px 60px;z-index:0;pointer-events:none}.cyber-grid{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}.cyber-grid::before{content:'';position:absolute;width:100%;height:100%;background:radial-gradient(circle at 50% 0%,rgba(168,85,247,.08),transparent 50%)}
+main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}@media(min-width:768px){main{padding:3rem 2rem}}.max-w{max-width:72rem;width:100%;margin:0 auto}.nav-row{display:flex;align-items:center;gap:1rem;margin-bottom:2rem;flex-wrap:wrap}.back-btn{display:inline-flex;align-items:center;gap:.5rem;padding:.5rem 1rem;border-radius:.75rem;background:rgba(255,255,255,.03);border:1px solid var(--border);color:var(--muted);text-decoration:none;font-family:monospace;font-size:.75rem;text-transform:uppercase;letter-spacing:.1em}.back-btn:hover{color:#c084fc;border-color:rgba(168,85,247,.5)}.back-btn.active{color:#fff;border-color:#a855f7;background:rgba(168,85,247,.15)}.icon-sm{width:14px;height:14px}.panel{background:#0a0b0f;border:1px solid var(--border);border-radius:1rem;overflow:hidden}.writeup-body{padding:2rem;max-width:60rem;margin:0 auto}@media(min-width:768px){.writeup-body{padding:3rem}}.meta{color:var(--dim);font-size:.75rem;font-family:monospace;letter-spacing:.1em;text-transform:uppercase;margin-bottom:1rem}h1{font-size:1.75rem;font-weight:800;text-transform:uppercase;margin-bottom:1.5rem}@media(min-width:768px){h1{font-size:2.5rem}}h2{font-size:1.25rem;color:var(--purple);margin:2.5rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid var(--border)}p,li{color:var(--muted);font-size:.95rem;line-height:1.75}p{margin-bottom:1rem}ul{margin:0 0 1rem 1.25rem}li{margin-bottom:.25rem}strong{color:var(--text)}code{font-family:monospace;font-size:.85rem;background:rgba(168,85,247,.1);color:var(--purple);padding:2px 6px;border-radius:6px}pre{background:rgba(0,0,0,.5);border:1px solid var(--border);border-radius:.75rem;padding:1rem;margin:1rem 0;font:.8rem/1.6 monospace;color:var(--emerald);white-space:pre-wrap;overflow-wrap:anywhere}.info-grid{display:grid;grid-template-columns:1fr;gap:.75rem;margin:1rem 0}@media(min-width:768px){.info-grid{grid-template-columns:repeat(3,1fr)}}.info-cell{background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:.75rem;padding:1rem}.lbl{color:var(--dim);font:.65rem monospace;text-transform:uppercase;letter-spacing:.1em;margin-bottom:.25rem}.val{font-size:.9rem;font-weight:600}.tag{display:inline-block;padding:2px 10px;border-radius:9999px;font:.7rem monospace;letter-spacing:.1em;text-transform:uppercase}.tag-easy{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);color:var(--emerald)}.tag-reversing{background:rgba(168,85,247,.1);border:1px solid rgba(168,85,247,.3);color:var(--purple)}.footer{text-align:center;padding-top:3rem;color:var(--dim);font:10px monospace;letter-spacing:.15em;text-transform:uppercase}
+</style>
+</head>
+<body><div class="cyber-grid"></div><main><div class="max-w">
+<div class="nav-row"><a href="../challenges.html" class="back-btn active"><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>Challenges</a><a href="../writeups.html" class="back-btn">Machines</a><a href="../index.html" class="back-btn">Home</a></div>
+<div class="panel"><div class="writeup-body"><p class="meta">reversing / easy</p><h1>Cyberpsychosis</h1>
+<div class="info-grid"><div class="info-cell"><div class="lbl">Type</div><div class="val"><span class="tag tag-reversing">Reversing</span></div></div><div class="info-cell"><div class="lbl">Difficulty</div><div class="val"><span class="tag tag-easy">Easy</span></div></div><div class="info-cell"><div class="lbl">Focus</div><div class="val">Kernel rootkit analysis</div></div></div>
+
+<h2>1. Scenario</h2><p>Malicious actors have infiltrated the systems and are believed to have implanted a custom rootkit. The supplied <code>diamorphine.ko</code> module is a modified Diamorphine-style Linux rootkit. Its primary concealment marker is <code>psychosis</code>.</p>
+
+<h2>2. Initial Reconnaissance</h2><p>The shell starts with limited terminal support:</p><pre>cttyhack: can't open '/dev/ttyS0': No such file or directory
+/bin/sh: can't access tty; job control turned off</pre><p>Several normal commands also behave unexpectedly:</p><pre>~ $ whoami
+whoami: unknown uid 1000
+
+~ $ cd /root
+/bin/sh: cd: can't cd to /root: Permission denied
+
+~ $ find / -type f -name '*.txt' 2&gt;/dev/null
+/bin/sh: can't create /dev/null: Permission denied</pre><p>These symptoms suggest more than ordinary file permissions. The kernel itself is likely modifying process, file, or identity behavior.</p>
+
+<h2>3. Inspecting the Module</h2><p>The module was examined outside the restricted shell using standard ELF and kernel-module tools:</p><pre>file diamorphine.ko
+modinfo diamorphine.ko
+nm -an diamorphine.ko
+readelf -S -s -r diamorphine.ko
+strings -a diamorphine.ko
+objdump -Mintel -drwC diamorphine.ko</pre><p><code>file</code> identifies it as an x86-64 relocatable ELF object with debug information. The module metadata identifies it as <code>diamorphine</code>, and the symbol table is still present.</p><p>Relevant functions include:</p><pre>hacked_kill
+hacked_getdents
+hacked_getdents64
+give_root
+find_task
+is_invisible
+module_hide
+module_show</pre><p>The string <code>psychosis</code> appears in the read-only data section. Both directory-enumeration hooks compare directory entry names against this marker and remove matching entries before returning results to user space.</p><p>In practice, names beginning with <code>psychosis</code> are hidden from commands that rely on <code>getdents</code> or <code>getdents64</code>.</p>
+
+<h2>4. Backdoor Signals</h2><p>The decompiled <code>hacked_kill</code> function checks for special signal values:</p><pre>if (sig == 64) {
+    struct cred *newcreds = prepare_creds();
+
+    if (newcreds != NULL) {
+        newcreds-&gt;uid.val = 0;
+        newcreds-&gt;gid.val = 0;
+        newcreds-&gt;euid.val = 0;
+        newcreds-&gt;egid.val = 0;
+        newcreds-&gt;suid.val = 0;
+        newcreds-&gt;sgid.val = 0;
+        newcreds-&gt;fsuid.val = 0;
+        newcreds-&gt;fsgid.val = 0;
+        commit_creds(newcreds);
+    }
+}
+
+if (sig == 46) {
+    /* Toggle module visibility. */
+}
+
+if (sig == 31) {
+    /* Toggle process invisibility. */
+}</pre><p>Signal meanings:</p><pre>Signal  Function
+64      Set the calling process's UID/GID fields to zero
+46      Show or hide the kernel module
+31      Toggle the current process's invisible flag</pre><p>The <code>0x40</code> branch grants root-like identity by cloning the current credentials, clearing the UID/GID fields, and installing the modified object with <code>commit_creds()</code>.</p>
+
+<h2>5. Syscall Hooking</h2><p>The module locates the system call table with a kprobe, saves original handlers, and replaces selected entries. The important targets are:</p><pre>__NR_kill       -&gt; hacked_kill
+__NR_getdents   -&gt; hacked_getdents
+__NR_getdents64 -&gt; hacked_getdents64</pre><p>The directory hooks copy directory results into kernel memory, inspect each entry, and remove entries matching the <code>psychosis</code> prefix. This explains why ordinary listing and search tools cannot see the target directory.</p>
+
+<h2>6. Failed Attempts</h2><p>Before identifying the module's signal interface, arbitrary signals did not help:</p><pre>~ $ kill -41 1
+sh: can't kill pid 1
+
+~ $ whoami
+unknown uid 1000</pre><p>The environment remained restricted because signal <code>41</code> is not handled as the rootkit's privilege trigger.</p>
+
+<h2>7. Privilege Escalation</h2><p>The decompiled signal handler showed that signal <code>64</code> invokes the credential-modification branch:</p><pre>kill -64 1
+whoami</pre><p>Result:</p><pre>root</pre><p>The shell now has the permissions required to remove the module.</p>
+
+<h2>8. Removing the Rootkit</h2><p>The module may be absent from <code>lsmod</code> because it removed itself from the kernel module list. If necessary, restore its visibility first:</p><pre>kill -46 1
+lsmod</pre><p>Then unload it:</p><pre>rmmod diamorphine</pre><p>BusyBox <code>rmmod</code> produces no output on success. Removing the module restores the original syscall handlers and stops the directory-filtering behavior.</p>
+
+<h2>9. Finding the Hidden File</h2><p>Before unloading the module, <code>/opt</code> appears empty:</p><pre>ls /opt</pre><p>After removal, search again:</p><pre>find / -type f -name '*.txt' 2&gt;/dev/null</pre><p>The hidden file is revealed:</p><pre>/opt/psychosis/flag.txt</pre><p>Read it with:</p><pre>cat /opt/psychosis/flag.txt</pre>
+</div></div><p class="footer">pumkin / challenges</p>
+</div></main></body></html>
