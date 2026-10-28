@@ -14,8 +14,8 @@ body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple
 body::before{content:'';position:fixed;inset:0;background:linear-gradient(rgba(255,255,255,.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px);background-size:60px 60px;z-index:0;pointer-events:none}
 .cyber-grid{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
 .cyber-grid::before{content:'';position:absolute;width:100%;height:100%;background:radial-gradient(circle at 50% 0%,rgba(168,85,247,.08) 0%,transparent 50%),radial-gradient(circle at 80% 80%,rgba(52,211,153,.04) 0%,transparent 50%)}
-main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem 1rem}
-@media(min-width:768px){main{padding:3rem 2rem}}
+main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem .75rem}
+@media(min-width:768px){main{padding:3rem 1rem}}
 .max-w{max-width:72rem;width:100%;margin:0 auto}
 .nav-row{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:2rem}.nav-links{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}
 .back-btn{display:inline-flex;align-items:center;gap:.5rem;padding:.5rem 1rem;border-radius:.75rem;background:var(--panel-bg);border:1px solid var(--border);color:var(--muted);text-decoration:none;font-family:'JetBrains Mono','Fira Code',monospace;font-size:.75rem;text-transform:uppercase;letter-spacing:.1em;transition:all .3s ease}
