@@ -38,6 +38,7 @@ main{position:relative;z-index:1;min-height:100vh;width:100%;display:flex;flex-d
 .profile-bottom{margin-top:auto}
 .avatar-wrap{position:relative;padding:4px;background:rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.06);width:fit-content;overflow:visible;margin-bottom:1.5rem}
 @media(min-width:768px){.avatar-wrap{float:left;margin:0 2rem 1rem 0}}
+@media(max-width:767px){.profile-inner{display:grid;grid-template-columns:auto minmax(0,1fr);column-gap:1rem;row-gap:1rem}.profile-inner::after{display:none}.avatar-wrap{grid-column:1;grid-row:1;margin:0}.profile-inner>.identity{grid-column:2;grid-row:1;min-width:0}.profile-inner>.description{grid-column:1/-1;margin-top:0}}
 .avatar-frame{position:relative;width:8rem;height:8rem;overflow:hidden;background:var(--bg)}
 @media(min-width:768px){.avatar-frame{width:10rem;height:10rem}}
 .avatar-frame img{
@@ -97,7 +98,8 @@ h1{font-size:2.5rem;font-weight:800;letter-spacing:-.03em;color:white;text-trans
 .arsenal-card .bg-pattern{position:absolute;inset:0;background:url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><rect width="20" height="20" fill="none"/><rect x="0" y="0" width="1" height="1" fill="rgba(255,255,255,.03)"/></svg>');opacity:.05;mix-blend-mode:overlay;pointer-events:none}
 .arsenal-grid{display:grid;grid-template-columns:1fr;gap:1rem;flex:1}
 @media(min-width:768px){.arsenal-grid{grid-template-columns:repeat(2,1fr)}}
-.arsenal-grid .span-2{grid-column:span 2}
+.arsenal-grid .span-2{grid-column:auto}
+@media(min-width:768px){.arsenal-grid .span-2{grid-column:span 2}}
 .arsenal-card .top-row{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1rem;position:relative;z-index:1}
 .arsenal-card .icon-box{width:3rem;height:3rem;border-radius:.75rem;background:var(--emerald-dim);border:1px solid rgba(52,211,153,.2);display:flex;align-items:center;justify-content:center;color:#34d399;transition:transform .3s ease}
 .arsenal-card:hover .icon-box{transform:scale(1.1)}
@@ -177,6 +179,7 @@ h1{font-size:2.5rem;font-weight:800;letter-spacing:-.03em;color:white;text-trans
 }
 
 .section-wrap{display:flex;flex-direction:column;gap:1rem}
+@media(max-width:767px){.arsenal-card.h-full{height:auto}}
 </style>
 </head>
 <body>
@@ -200,7 +203,7 @@ h1{font-size:2.5rem;font-weight:800;letter-spacing:-.03em;color:white;text-trans
             <div class="scan-line"></div>
           </div>
         </div>
-        <div>
+         <div class="identity">
           <div class="status-row">
             <div class="dots">
               <div class="dot dot-red"></div>
@@ -213,15 +216,15 @@ h1{font-size:2.5rem;font-weight:800;letter-spacing:-.03em;color:white;text-trans
             <svg class="icon-sm title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="22" x2="18" y1="12" y2="12"/><line x1="6" x2="2" y1="12" y2="12"/><line x1="12" x2="12" y1="6" y2="2"/><line x1="12" x2="12" y1="22" y2="18"/></svg>
             <span class="title-text">Offensive Security Specialist</span>
           </div>
-           <p class="description">Aspiring Penetration Tester and Red Teamer. Completed a BSc in Computer Science and now pursuing an MSc in Cybersecurity. Actively grinding on HackTheBox and participating in online and real-time CTFs to strengthen my skills in web application exploitation, network pivoting, and realistic adversarial simulations. Currently working toward my CPTS certification.<p>
-        </div>
+         </div>
+         <p class="description">Aspiring Penetration Tester and Red Teamer. Completed a BSc in Computer Science and now pursuing an MSc in Cybersecurity. Actively grinding on HackTheBox and participating in online and real-time CTFs to strengthen my skills in web application exploitation, network pivoting, and realistic adversarial simulations. Currently working toward my CPTS certification.</p>
       </div>
       <div class="profile-bottom">
         <div class="terminal">
           <div class="terminal-bar"></div>
           <p class="terminal-line">root@kali:~# nc -lnvp 4444</p>
           <p class="terminal-output">listening on [any] 4444 ...</p>
-          <p class="terminal-output">connect to [10.0.0.1] from (UNKNOWN) [[IP]] 54321</p>
+          <p class="terminal-output">connect to [10.10.14.7] from (UNKNOWN) [10.10.14.23] 49812</p>
           <p><span class="terminal-highlight">root@target:/tmp# </span><span class="terminal-cursor">_</span></p>
         </div>
         <div class="social-links">
@@ -261,7 +264,7 @@ h1{font-size:2.5rem;font-weight:800;letter-spacing:-.03em;color:white;text-trans
           <svg class="icon-md arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>
         </div>
         <h3>My Tools/Projects</h3>
-        <p>Custom scripts, configurations, and hacking arsenal.</p>
+        <p>Custom scripts, projects, and hacking arsenal.</p>
       </a>
       <a class="panel arsenal-card h-full" href="https://github.com/andreix341/dotfiles/">
         <div class="bg-pattern"></div>
@@ -272,7 +275,7 @@ h1{font-size:2.5rem;font-weight:800;letter-spacing:-.03em;color:white;text-trans
           <svg class="icon-md arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>
         </div>
         <h3>Dotfiles</h3>
-        <p>Configuration files, aliases, and env setup.</p>
+        <p>Linux desktop configuration files, themes, and environment.</p>
       </a>
     </div>
   </div>
