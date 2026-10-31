@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="theme-color" content="#030305"/>
+<title>Holmes 2025 3: The Enduring Echo - Sherlock Write Up | pumkin</title>
+<meta name="description" content="Holmes 2025 3: The Enduring Echo DFIR Sherlock write up: reconstructing Windows command execution, persistence, credential creation, and proxy pivoting."/>
+<link rel="icon" href="../cat.png"/>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#030305;--border:rgba(255,255,255,.06);--text:#fafafa;--muted:#9ca3af;--dim:#6b7280;--purple:#c084fc;--emerald:#34d399}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple-system,sans-serif;min-height:100vh;overflow-x:hidden;position:relative}body::before{content:'';position:fixed;inset:0;background:linear-gradient(rgba(255,255,255,.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px);background-size:60px 60px;z-index:0;pointer-events:none}.cyber-grid{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}.cyber-grid::before{content:'';position:absolute;width:100%;height:100%;background:radial-gradient(circle at 50% 0%,rgba(168,85,247,.08),transparent 50%)}
+main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem .75rem}@media(min-width:768px){main{padding:3rem 1rem}}.max-w{max-width:72rem;width:100%;margin:0 auto}.nav-row{display:flex;align-items:center;gap:1rem;margin-bottom:2rem;flex-wrap:wrap}.back-btn{display:inline-flex;align-items:center;gap:.5rem;padding:.5rem 1rem;border-radius:.75rem;background:rgba(255,255,255,.03);border:1px solid var(--border);color:var(--muted);text-decoration:none;font-family:monospace;font-size:.75rem;text-transform:uppercase;letter-spacing:.1em}.back-btn:hover{color:#c084fc;border-color:rgba(168,85,247,.5)}.back-btn.active{color:#fff;border-color:#a855f7;background:rgba(168,85,247,.15)}.icon-sm{width:14px;height:14px}.panel{background:#0a0b0f;border:1px solid var(--border);border-radius:1rem;overflow:hidden}.writeup-body{padding:1.25rem;max-width:none;margin:0 auto}@media(min-width:768px){.writeup-body{padding:2rem}}.meta{color:var(--dim);font-size:.75rem;font-family:monospace;letter-spacing:.1em;text-transform:uppercase;margin-bottom:1rem}h1{font-size:1.75rem;font-weight:800;text-transform:uppercase;margin-bottom:1.5rem}@media(min-width:768px){h1{font-size:2.5rem}}h2{font-size:1.25rem;color:var(--purple);margin:2.5rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid var(--border)}p,li{color:var(--muted);font-size:.95rem;line-height:1.75}p{margin-bottom:1rem}ul,ol{margin:0 0 1rem 1.25rem}li{margin-bottom:.25rem}strong{color:var(--text)}code{font-family:monospace;font-size:.85rem;background:rgba(168,85,247,.1);color:var(--purple);padding:2px 6px;border-radius:6px}pre{background:rgba(0,0,0,.5);border:1px solid var(--border);border-radius:.75rem;padding:1rem;margin:1rem 0;font:.8rem/1.6 monospace;color:var(--emerald);white-space:pre-wrap;overflow-wrap:anywhere}.info-grid{display:grid;grid-template-columns:1fr;gap:.75rem;margin:1rem 0}@media(min-width:768px){.info-grid{grid-template-columns:repeat(3,1fr)}}.info-cell{background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:.75rem;padding:1rem}.lbl{color:var(--dim);font:.65rem monospace;text-transform:uppercase;letter-spacing:.1em;margin-bottom:.25rem}.val{font-size:.9rem;font-weight:600}.tag{display:inline-block;padding:2px 10px;border-radius:9999px;font:.7rem monospace;letter-spacing:.1em;text-transform:uppercase}.tag-easy{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);color:var(--emerald)}.tag-dfir{background:rgba(168,85,247,.1);border:1px solid rgba(168,85,247,.3);color:var(--purple)}.footer{text-align:center;padding-top:3rem;color:var(--dim);font:10px monospace;letter-spacing:.15em;text-transform:uppercase}
+</style>
+</head>
+<body><div class="cyber-grid"></div><main><div class="max-w">
+<div class="nav-row"><a href="../challenges.html" class="back-btn active"><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>Challenges</a><a href="../writeups.html" class="back-btn">Machines</a><a href="../index.html" class="back-btn">Home</a></div>
+<div class="panel"><div class="writeup-body"><p class="meta">sherlock / dfir / easy</p><h1>Holmes 2025 3: The Enduring Echo</h1>
+<div class="info-grid"><div class="info-cell"><div class="lbl">Type</div><div class="val"><span class="tag tag-dfir">DFIR</span></div></div><div class="info-cell"><div class="lbl">Difficulty</div><div class="val"><span class="tag tag-easy">Easy</span></div></div><div class="info-cell"><div class="lbl">Focus</div><div class="val">Windows intrusion analysis</div></div></div>
+
+<h2>Scenario</h2><p>LeStrade passes a disk image to Holmes. It is one of the identified breach points and is now showing abnormal CPU activity and anomalies in process logs.</p>
+
+<h2>Task 1</h2><p>What was the first (non cd) command executed by the attacker on the host?</p><p>In <code>Security.evtx</code>, search for process creation events by filtering for <code>cmd.exe</code>:</p><pre>C:\Windows\System32\cmd.exe cmd.exe /Q /c systeminfo 1&gt; \\127.0.0.1\ADMIN$\__1756075857.955773 2&gt;&amp;1</pre><p><strong>Answer:</strong> <code>systeminfo</code></p>
+
+<h2>Task 2</h2><p>Which parent process (full path) spawned the attacker’s commands?</p><p>The parent process is present in the same event row.</p><p><strong>Answer:</strong> <code>C:\Windows\System32\wbem\WmiPrvSE.exe</code></p>
+
+<h2>Task 3</h2><p>Which remote-execution tool was most likely used for the attack?</p><p>The parent process identified in Task 2 is <code>WmiPrvSE.exe</code>, the Windows WMI Provider Host. This indicates that the attacker executed commands through WMI rather than an interactive shell. The most likely remote-execution tool is Impacket's WMI-based <code>wmiexec.py</code>.</p><p><strong>Answer:</strong> <code>wmiexec.py</code></p>
+
+<h2>Task 4</h2><p>What was the attacker’s IP address?</p><p>Following the attacker’s commands reveals the address added to the hosts file:</p><pre>C:\Windows\System32\cmd.exe cmd.exe /Q /c cmd /C "echo 10.129.242.110 NapoleonsBlackPearl.htb &gt;&gt; C:\Windows\System32\drivers\etc\hosts" 1&gt; \\127.0.0.1\ADMIN$\__1756075857.955773 2&gt;&amp;1</pre><p><strong>Answer:</strong> <code>10.129.242.110</code></p>
+
+<h2>Task 5</h2><p>The attacker established multiple persistence mechanisms. What is set as the name of the earliest one created?</p><p>Further command analysis shows the attacker creating a scheduled task:</p><pre>C:\Windows\System32\cmd.exe cmd.exe /Q /c schtasks /create /tn "SysHelper Update" /tr "powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File C:\Users\Werni\Appdata\Local\JM.ps1" /sc minute /mo 2 /ru SYSTEM /f 1&gt; \\127.0.0.1\ADMIN$\__1756076432.886685 2&gt;&amp;1</pre><p><strong>Answer:</strong> <code>SysHelper Update</code></p>
+
+<h2>Task 6</h2><p>Identify the script executed by the persistence mechanism.</p><p>The script path is present in the scheduled-task command:</p><pre>C:\Users\Werni\Appdata\Local\JM.ps1</pre><p><strong>Answer:</strong> <code>C:\Users\Werni\Appdata\Local\JM.ps1</code></p>
+
+<h2>Task 7</h2><p>What local account did the attacker create?</p><p>The PowerShell script initializes a list of usernames, checks whether each exists, and creates a randomly selected user. Security Event ID 4720 records the account creation:</p><pre>Target: HEISEN-9-WS-6\svc_netupd (S-1-5-21-3871582759-1638593395-315824688-1003)</pre><p><strong>Answer:</strong> <code>svc_netupd</code></p>
+
+<h2>Task 8</h2><p>What domain name did the attacker use for credential exfiltration?</p><p>The attacker added the following host mapping:</p><pre>C:\Windows\System32\cmd.exe cmd.exe /Q /c cmd /C "echo 10.129.242.110 NapoleonsBlackPearl.htb &gt;&gt; C:\Windows\System32\drivers\etc\hosts" 1&gt; \\127.0.0.1\ADMIN$\__1756075857.955773 2&gt;&amp;1</pre><p><strong>Answer:</strong> <code>NapoleonsBlackPearl.htb</code></p>
+
+<h2>Task 9</h2><p>What password did the attacker's script generate for the newly created user?</p><p>The script builds the password by appending a timestamp to <code>Watson_</code>:</p><pre>$newUser = Get-Random -InputObject $usernames
+$timestamp = (Get-Date).ToString("yyyyMMddHHmmss")
+$password = "Watson_$timestamp"</pre><p>The account-creation time is <code>2025-08-24 23:05:09</code>, but time shifts prevent using that timestamp directly. Extract the hash with <code>impacket-secretsdump</code> using the SAM, SECURITY, and SYSTEM hives. Then use <code>20250824</code> followed by <code>?d?d?d?d?d?</code>; the <code>?d</code> mask restricts hashcat to digits.</p><p><strong>Answer:</strong> <code>Watson_20250824160509</code></p>
+
+<h2>Task 10</h2><p>What was the IP address of the internal system the attacker pivoted to?</p><p>Following the command chain reveals <code>proxy.bat</code> adding a port proxy:</p><pre>C:\Windows\System32\netsh.exe netsh  interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=9999 connectaddress=192.168.1.101 connectport=22</pre><p><strong>Answer:</strong> <code>192.168.1.101</code></p>
+
+<h2>Task 11</h2><p>Which TCP port on the victim was forwarded to enable the pivot?</p><p>The listening port is shown in the portproxy command from Task 10.</p><p><strong>Answer:</strong> <code>9999</code></p>
+
+<h2>Task 12</h2><p>What is the full registry path that stores persistent IPv4→IPv4 TCP listener-to-target mappings?</p><p>Analyze the SYSTEM hive with a registry viewer and filter for <code>PortProxy</code>:</p><pre>C:\Users\anrei\Desktop\C\Windows\System32\config\SYSTEM: ROOT\ControlSet001\Services\PortProxy\v4tov4\tcp</pre><p><strong>Answer:</strong> <code>HKLM\SYSTEM\CurrentControlSet\Services\PortProxy\v4tov4\tcp</code></p>
+
+<h2>Task 13</h2><p>What is the MITRE ATT&amp;CK ID associated with the previous technique used by the attacker to pivot to the internal system?</p><p>The attacker used a Command and Control proxy technique to establish the connection to the internal system.</p><p><strong>Answer:</strong> <code>T1090.001</code> (Internal Proxy)</p>
+
+<h2>Task 14</h2><p>Before the attack, the administrator configured Windows to capture command line details in the event logs. What command did they run to achieve this?</p><p>The command is recorded in the Administrator user's PowerShell history under <code>C:\Users\Administrator\AppData\Roaming\Microsoft\Windows\PowerShell\PSReadline</code>:</p><pre>reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System\Audit" /v ProcessCreationIncludeCmdLine_Enabled /t REG_DWORD /d 1 /f</pre>
+</div></div><p class="footer">pumkin / challenges</p>
+</div></main></body></html>
