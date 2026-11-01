@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="theme-color" content="#030305"/>
+<title>ShellForSell - Sherlock Write Up | pumkin</title>
+<meta name="description" content="ShellForSell DFIR Sherlock write up: reconstructing a WordPress compromise, webshell deployment, root access, persistence, and data theft."/>
+<link rel="icon" href="../cat.png"/>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#030305;--border:rgba(255,255,255,.06);--text:#fafafa;--muted:#9ca3af;--dim:#6b7280;--purple:#c084fc;--emerald:#34d399}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,-apple-system,sans-serif;min-height:100vh;overflow-x:hidden;position:relative}body::before{content:'';position:fixed;inset:0;background:linear-gradient(rgba(255,255,255,.015) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.015) 1px,transparent 1px);background-size:60px 60px;z-index:0;pointer-events:none}.cyber-grid{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}.cyber-grid::before{content:'';position:absolute;width:100%;height:100%;background:radial-gradient(circle at 50% 0%,rgba(168,85,247,.08),transparent 50%)}
+main{position:relative;z-index:1;min-height:100vh;width:100%;padding:2rem .75rem}@media(min-width:768px){main{padding:3rem 1rem}}.max-w{max-width:72rem;width:100%;margin:0 auto}.nav-row{display:flex;align-items:center;gap:1rem;margin-bottom:2rem;flex-wrap:wrap}.back-btn{display:inline-flex;align-items:center;gap:.5rem;padding:.5rem 1rem;border-radius:.75rem;background:rgba(255,255,255,.03);border:1px solid var(--border);color:var(--muted);text-decoration:none;font-family:monospace;font-size:.75rem;text-transform:uppercase;letter-spacing:.1em}.back-btn:hover{color:#c084fc;border-color:rgba(168,85,247,.5)}.back-btn.active{color:#fff;border-color:#a855f7;background:rgba(168,85,247,.15)}.icon-sm{width:14px;height:14px}.panel{background:#0a0b0f;border:1px solid var(--border);border-radius:1rem;overflow:hidden}.writeup-body{padding:1.25rem;max-width:none;margin:0 auto}@media(min-width:768px){.writeup-body{padding:2rem}}.meta{color:var(--dim);font-size:.75rem;font-family:monospace;letter-spacing:.1em;text-transform:uppercase;margin-bottom:1rem}h1{font-size:1.75rem;font-weight:800;text-transform:uppercase;margin-bottom:1.5rem}@media(min-width:768px){h1{font-size:2.5rem}}h2{font-size:1.25rem;color:var(--purple);margin:2.5rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid var(--border)}p,li{color:var(--muted);font-size:.95rem;line-height:1.75}p{margin-bottom:1rem}ul,ol{margin:0 0 1rem 1.25rem}li{margin-bottom:.25rem}strong{color:var(--text)}code{font-family:monospace;font-size:.85rem;background:rgba(168,85,247,.1);color:var(--purple);padding:2px 6px;border-radius:6px}pre{background:rgba(0,0,0,.5);border:1px solid var(--border);border-radius:.75rem;padding:1rem;margin:1rem 0;font:.8rem/1.6 monospace;color:var(--emerald);white-space:pre-wrap;overflow-wrap:anywhere}.info-grid{display:grid;grid-template-columns:1fr;gap:.75rem;margin:1rem 0}@media(min-width:768px){.info-grid{grid-template-columns:repeat(3,1fr)}}.info-cell{background:rgba(0,0,0,.3);border:1px solid var(--border);border-radius:.75rem;padding:1rem}.lbl{color:var(--dim);font:.65rem monospace;text-transform:uppercase;letter-spacing:.1em;margin-bottom:.25rem}.val{font-size:.9rem;font-weight:600}.tag{display:inline-block;padding:2px 10px;border-radius:9999px;font:.7rem monospace;letter-spacing:.1em;text-transform:uppercase}.tag-easy{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.3);color:var(--emerald)}.tag-dfir{background:rgba(168,85,247,.1);border:1px solid rgba(168,85,247,.3);color:var(--purple)}.footer{text-align:center;padding-top:3rem;color:var(--dim);font:10px monospace;letter-spacing:.15em;text-transform:uppercase}
+</style>
+</head>
+<body><div class="cyber-grid"></div><main><div class="max-w">
+<div class="nav-row"><a href="../challenges.html" class="back-btn active"><svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>Challenges</a><a href="../writeups.html" class="back-btn">Machines</a><a href="../index.html" class="back-btn">Home</a></div>
+<div class="panel"><div class="writeup-body"><p class="meta">sherlock / dfir / easy</p><h1>ShellForSell</h1>
+<div class="info-grid"><div class="info-cell"><div class="lbl">Type</div><div class="val"><span class="tag tag-dfir">DFIR</span></div></div><div class="info-cell"><div class="lbl">Difficulty</div><div class="val"><span class="tag tag-easy">Easy</span></div></div><div class="info-cell"><div class="lbl">Focus</div><div class="val">WordPress intrusion analysis</div></div></div>
+
+<h2>Scenario</h2><p>A recently deployed internal server is believed to have been compromised. The server serves multiple internal purposes at Alliance Systems, so understanding the extent of the incident is critical. A triage image collected with the UAC tool is provided, although the incident occurred at least a day before the response team was informed and live artifacts may not be useful.</p><p>The image contains:</p><pre>[root]
+bodyfile
+hash_executables
+live_response
+system
+uac.log</pre>
+
+<h2>Task 1</h2><p>When did the attacker start the enumeration of the server?</p><p><code>[root]/var/log/apache2/access.log.1</code> contains the server requests. Requests from <code>192.168.72.131</code> use WPScan and are likely attacker activity:</p><pre>192.168.72.131 - - [31/Jul/2026:09:09:22 +0000] "GET / HTTP/1.1" 200 12171 "http://192.168.72.164" "WPScan v3.8.28 (https://wpscan.com/wordpress-security-scanner)"</pre><p><strong>Answer:</strong> <code>2026-07-31 09:09:22</code></p>
+
+<h2>Task 2</h2><p>The attacker performed a credential-stuffing attack. How many total attempts were made in total?</p><p>Multiple POST requests from the attacker IP target <code>/wp-login.php</code> through WPScan. Count them with:</p><pre>grep 192.168.72.131 access.log.1 | grep -i wpscan | grep -c "POST /wp-login.php"</pre><p><strong>Answer:</strong> <code>45</code></p>
+
+<h2>Task 3</h2><p>Which CVEs did the attacker chain together to gain command execution on the server?</p><p>The exploit is called <code>wp2shell</code>. The request <code>POST /?rest_route=/batch/v1 HTTP/1.1</code> maps to <code>CVE-2026-63030</code>, while the chained SQL injection is <code>CVE-2026-60137</code>.</p><p><strong>Answer:</strong> <code>CVE-2026-60137, CVE-2026-63030</code></p>
+
+<h2>Task 4</h2><p>When was the vulnerability exploited?</p><p>The first exploitation request was:</p><pre>192.168.72.131 - - [31/Jul/2026:09:15:14 +0000] "POST /?rest_route=/batch/v1 HTTP/1.1" 207 9732 "-" "wp2shell"</pre><p><strong>Answer:</strong> <code>2026-07-31 09:15:14</code></p>
+
+<h2>Task 5</h2><p>The exploit specifically adds spoofed timestamps during its exploitation of the backend. What is the spoofed timestamp value?</p><p>The value appears repeatedly as hexadecimal data inside the injected <code>UNION ALL SELECT</code> payload in <code>[root]/var/www/html/wordpress/wp-content/debug.log</code>.</p><p><strong>Answer:</strong> <code>2020-01-01 00:00:00</code></p>
+
+<h2>Task 6</h2><p>When did the attacker first gain OS-level RCE capability via the exploit?</p><p>The first successful command was <code>id</code> in this request:</p><pre>192.168.72.131 - - [31/Jul/2026:09:16:08 +0000] "GET /wp-content/plugins/wp2shell_3bc0ab20/wp2shell_3bc0ab20.php?t=8070d9982f82daefc06aafc6b3cf7e73&amp;c=id HTTP/1.1" 200 259 "-" "wp2shell"</pre><p><strong>Answer:</strong> <code>2026-07-31 09:16:08</code></p>
+
+<h2>Task 7</h2><p>What is the full filesystem path of the web shell primarily used by the attacker?</p><p>URL-decoding the attacker’s command reveals the working directory and shell path:</p><pre>192.168.72.131 - - [31/Jul/2026:09:16:32 +0000] "GET /wp-content/plugins/wp2shell_767ea7d9/wp2shell_767ea7d9.php?t=de336222b928e26a93e23138e5d6193b&amp;c=cd+%2Fvar%2Fwww%2Fhtml%2Fwordpress%2Fwp-content%2Fplugins%2Fwp2shell_767ea7d9+2%3E%2Fdev%2Fnull%3B+uname+-a%3B+printf+%27__wp2shellcwd__%25s%27+%22%24%28pwd%29%22 HTTP/1.1" 200 410 "-" "wp2shell"
+
+cd /var/www/html/wordpress/wp-content/plugins/wp2shell_767ea7d9 2&gt;/dev/null; uname -a; printf '__wp2shellcwd__%s' "$(pwd)"</pre><p><strong>Answer:</strong> <code>/var/www/html/wordpress/wp-content/plugins/wp2shell_767ea7d9/wp2shell_767ea7d9.php</code></p>
+
+<h2>Task 8</h2><p>When did the attacker successfully log in to the machine with a privileged account due to password reuse across the blog and system login?</p><p>Filter <code>auth.log</code> for the attacker IP:</p><pre>2026-07-31T09:23:10.784393+00:00 admsrv01 sshd[2130]: Accepted password for root from 192.168.72.131 port 50428 ssh2</pre><p><strong>Answer:</strong> <code>2026-07-31 09:23:10</code></p>
+
+<h2>Task 9</h2><p>What is the full path of the file that the attacker added for persistence?</p><p>The persistence file is:</p><pre>/root/.ssh/authorized_keys</pre><p>It is located at <code>[root]/root/.ssh/authorized_keys</code>. The file contains an SSH key ending in <code>root@kali</code>, and bodyfile timestamps place its change during the incident. This allows passwordless root authentication.</p><p><strong>Answer:</strong> <code>/root/.ssh/authorized_keys</code></p>
+
+<h2>Task 10</h2><p>What is the full path of the file that gave the attacker database credential access?</p><p>The root user's Bash history shows the attacker reading the WordPress configuration:</p><pre>id
+ls -la /var/www/html/
+cat /var/www/html/wordpress/wp-config.php
+mysqldump -u wpuser -p --all-databases &gt; config.sql
+mysqldump -u root -p --all-databases &gt; config.sql</pre><p><strong>Answer:</strong> <code>/var/www/html/wordpress/wp-config.php</code></p>
+
+<h2>Task 11</h2><p>What is the full command that the attacker used to dump every database on the server?</p><p>After obtaining the database credentials, the attacker used <code>mysqldump</code> to export every database:</p><p><strong>Answer:</strong> <code>mysqldump -u root -p --all-databases &gt; config.sql</code></p>
+
+<h2>Task 12</h2><p>When was the database successfully dumped?</p><p>The dump was written to <code>config.sql</code>. Search the UAC artifacts:</p><pre>grep -R 'config.sql' . 2&gt;/dev/null
+./[root]/root/.bash_history:mysqldump -u wpuser -p --all-databases &gt; config.sql
+./[root]/root/.bash_history:mysqldump -u root -p --all-databases &gt; config.sql
+./[root]/root/.bash_history:ls -la config.sql
+./bodyfile/bodyfile.txt:0|/root/config.sql|524306|-rw-r--r--|0|0|1487161|1785490421|1785490120|1785490120|1785490043</pre><p>The bodyfile entry contains:</p><pre>1785490421 | 1785490120 | 1785490120 | 1785490043
+
+atime: 09:33:41 UTC
+mtime: 09:28:40 UTC
+ctime: 09:28:40 UTC
+crtime/birth time: 09:27:23 UTC</pre><p><strong>Answer:</strong> <code>2026-07-31 09:27:23</code></p>
+
+<h2>Task 13</h2><p>What is the name of the WordPress administrator user that was created by exploiting the vulnerability to upload the web shell and used for the majority of their operation?</p><p>During the wp2shell phase, the attacker deletes the temporary administrator account:</p><pre>192.168.72.131 - - [31/Jul/2026:09:18:38 +0000] "GET /wp-content/plugins/wp2shell_767ea7d9/wp2shell_767ea7d9.php?t=de336222b928e26a93e23138e5d6193b&amp;delete_user=wp2_758d54eed8a9&amp;reassign=1 HTTP/1.1" 200 189 "-" "wp2shell"</pre><p><strong>Answer:</strong> <code>wp2_758d54eed8a9</code></p>
+
+<h2>Task 14</h2><p>What is the username and hostname of the attacker's machine?</p><p>The username and hostname are visible in the SSH key stored in <code>.ssh/authorized_keys</code>.</p><p><strong>Answer:</strong> <code>root, kali</code></p>
+</div></div><p class="footer">pumkin / challenges</p>
+</div></main></body></html>
